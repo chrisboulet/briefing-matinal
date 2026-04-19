@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/chrisboulet/briefing-matinal/sources/comptes.schema.json",
+  "title": "Briefing Matinal — Configuration",
+  "description": "Schema de validation pour sources/comptes.json. Voir PRD §S5.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "comptes_x",
+    "recherches_thematiques",
+    "sources_web",
+    "sections",
+    "engagement_min"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Version du schéma. Incrémenter en cas de breaking change."
+    },
+    "comptes_x": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^@[A-Za-z0-9_]{1,15}$",
+        "description": "Handle X commençant par @, max 15 chars (limite X)."
+      }
+    },
+    "comptes_x_groups": {
+      "type": "array",
+      "description": "Groupement optionnel pour respecter limite 10 handles/call. Si absent : split auto.",
+      "items": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 10,
+        "items": { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" }
+      }
+    },
+    "recherches_thematiques": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["theme", "query", "section_id"],
+        "additionalProperties": false,
+        "properties": {
+          "theme": { "type": "string", "minLength": 1 },
+          "query": { "type": "string", "minLength": 1 },
+          "section_id": {
+            "type": "string",
+            "description": "FK vers sections[].id — N recherches peuvent pointer vers la même section."
+          }
+        }
+      }
+    },
+    "sources_web": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9.-]+\\.[a-z]{2,}$",
+        "description": "Domaine sans protocole (ex: journaldequebec.com)."
+      }
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "emoji", "max_items"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "description": "Identifiant kebab-case, référencé par recherches_thematiques.section_id."
+          },
+          "label": { "type": "string", "minLength": 1 },
+          "emoji": { "type": "string", "minLength": 1 },
+          "max_items": { "type": "integer", "minimum": 0, "maximum": 10 }
+        }
+      }
+    },
+    "engagement_min": {
+      "type": "object",
+      "required": ["likes", "reposts"],
+      "additionalProperties": false,
+      "description": "Seuil minimal pour qu'un post X soit considéré (OR entre les deux).",
+      "properties": {
+        "likes": { "type": "integer", "minimum": 0 },
+        "reposts": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
