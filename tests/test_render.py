@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
 from scripts.config import load_config
 from scripts.models import Briefing
-from scripts.render import RenderError, SIZE_BUDGET_BYTES, render
+from scripts.render import SIZE_BUDGET_BYTES, RenderError, render
 
 
 @pytest.fixture
@@ -28,9 +27,9 @@ def minimal_briefing(make_item) -> Briefing:
     return Briefing(
         briefing_id="2026-04-19-matin",
         moment="matin",
-        generated_at=datetime(2026, 4, 19, 10, 44, tzinfo=timezone.utc),
-        window_start=datetime(2026, 4, 18, 21, 30, tzinfo=timezone.utc),
-        window_end=datetime(2026, 4, 19, 10, 30, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 4, 19, 10, 44, tzinfo=UTC),
+        window_start=datetime(2026, 4, 18, 21, 30, tzinfo=UTC),
+        window_end=datetime(2026, 4, 19, 10, 30, tzinfo=UTC),
         sixty_seconds=[a, t, p],
         sections={"ai-tech": [a], "tesla": [t], "spacex": [], "sante": [], "politique": [p], "business": []},
         dont_miss=dm,

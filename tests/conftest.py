@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -49,4 +49,4 @@ def make_item():
 
 @pytest.fixture
 def fixed_now() -> datetime:
-    return datetime(2026, 4, 19, 6, 44, 30, tzinfo=timezone.utc)
+    return datetime(2026, 4, 19, 6, 44, 30, tzinfo=UTC)
