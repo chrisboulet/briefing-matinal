@@ -3,32 +3,110 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Briefing {{ briefing.moment }} {{ briefing.briefing_id }}</title>
 <style>
-/* Phase 1 placeholder — Phase 2 polira (dark/light, contraste AA, etc.) */
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-  max-width:720px;margin:1rem auto;padding:0 1rem;line-height:1.5;color:#222;background:#fff;}
-h1{font-size:1.4rem;line-height:1.2;border-bottom:2px solid #222;padding-bottom:.4rem;}
-h2{font-size:1.1rem;margin:1.5rem 0 .5rem;line-height:1.2;}
-article{margin-bottom:.9rem;padding-bottom:.6rem;border-bottom:1px solid #e0e0e0;}
-article a{color:#0a4ea2;text-decoration:none;font-weight:600;}
-article a:hover{text-decoration:underline;}
-article p{margin:.3rem 0;}
-.source{color:#666;font-size:.85em;}
-.warn{background:#fff3cd;border:1px solid #ffe08a;padding:.5rem .75rem;border-radius:4px;}
-.meta{color:#888;font-size:.75em;margin-top:2rem;border-top:1px dashed #ccc;padding-top:.5rem;}
-@media (prefers-color-scheme: dark){
-  body{color:#e8e8e8;background:#161616;}
-  h1{border-color:#e8e8e8;}
-  article{border-color:#333;}
-  article a{color:#7cb6ff;}
-  .source{color:#999;}
-  .warn{background:#3a2f0a;border-color:#7a5e1a;color:#f0d878;}
-  .meta{color:#777;border-color:#444;}
+/* Palette validée AA (≥4.5:1 texte normal, ≥3:1 large) — voir tests/test_render.py */
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;          /* 16.1:1 vs bg */
+  --muted: #595959;       /* 7.0:1 vs bg */
+  --link: #0a4ea2;        /* 8.4:1 vs bg */
+  --link-hov: #052b59;
+  --border: #e1e4e8;
+  --hero-bg: #f5f7fa;
+  --hero-accent: #0a4ea2;
+  --warn-bg: #fff3cd;
+  --warn-bd: #d4a92e;
+  --warn-fg: #5a4500;     /* 8.6:1 vs warn-bg */
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121212;
+    --fg: #eaeaea;        /* 15.3:1 vs bg */
+    --muted: #a8a8a8;     /* 7.6:1 vs bg */
+    --link: #7cb6ff;      /* 8.5:1 vs bg */
+    --link-hov: #b3d4ff;
+    --border: #2a2a2a;
+    --hero-bg: #1c1c1c;
+    --hero-accent: #7cb6ff;
+    --warn-bg: #3a2f0a;
+    --warn-bd: #7a5e1a;
+    --warn-fg: #f0d878;   /* 9.2:1 vs warn-bg */
+  }
+}
+* { box-sizing: border-box; }
+html { font-size: 16px; -webkit-text-size-adjust: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1rem;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg);
+}
+h1 {
+  font-size: 1.4rem;
+  line-height: 1.25;
+  margin: 0 0 1rem;
+  padding-bottom: .5rem;
+  border-bottom: 2px solid var(--fg);
+}
+h2 {
+  font-size: 1.1rem;
+  line-height: 1.3;
+  margin: 1.75rem 0 .75rem;
+  letter-spacing: .01em;
+}
+h3 {
+  font-size: 1rem;
+  line-height: 1.35;
+  margin: 0 0 .35rem;
+  font-weight: 600;
+}
+p { margin: .35rem 0; }
+a { color: var(--link); text-decoration: none; }
+a:hover, a:focus { color: var(--link-hov); text-decoration: underline; }
+article {
+  margin: 0 0 .9rem;
+  padding-bottom: .85rem;
+  border-bottom: 1px solid var(--border);
+}
+article:last-of-type { border-bottom: none; }
+.src { color: var(--muted); font-size: .85rem; margin-top: .25rem; }
+.hero {
+  background: var(--hero-bg);
+  border-left: 4px solid var(--hero-accent);
+  padding: .85rem 1rem;
+  border-radius: 4px;
+  margin-bottom: .75rem;
+  border-bottom: none;
+}
+.hero h3 { font-size: 1.05rem; }
+.warn {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-bd);
+  color: var(--warn-fg);
+  padding: .6rem .85rem;
+  border-radius: 4px;
+  margin: 0 0 1rem;
+  font-size: .95rem;
+}
+.empty { color: var(--muted); font-style: italic; font-size: .9rem; }
+.meta {
+  color: var(--muted);
+  font-size: .75rem;
+  margin-top: 2.5rem;
+  padding-top: .75rem;
+  border-top: 1px dashed var(--border);
+  word-break: break-all;
 }
 </style>
 </head>
 <body>
+{% from "partials/_item.html" import render_item %}
+
 <h1>{{ "☀️" if briefing.moment == "matin" else "🌙" }} BRIEFING {{ briefing.moment | upper }} — {{ briefing.briefing_id }}</h1>
 
 {% if briefing.warnings %}
@@ -37,37 +115,27 @@ article p{margin:.3rem 0;}
 
 <h2>⚡ EN 60 SECONDES</h2>
 {% for item in briefing.sixty_seconds %}
-<article>
-<a href="{{ item.short_url or item.canonical_url }}">{{ item.title }}</a>
-<p>{{ item.summary }}</p>
-<p class="source">via {{ item.source_handle }}{% if item.alt_sources %} + {{ item.alt_sources | length }} autres{% endif %}</p>
-</article>
+{{ render_item(item, hero=true) }}
+{% else %}
+<p class="empty">Pas assez d'éléments marquants pour un résumé express.</p>
 {% endfor %}
 
 {% for section in sections_in_order %}
 <h2>{{ section.emoji }} {{ section.label }}</h2>
 {% for item in briefing.sections.get(section.id, []) %}
-<article>
-<a href="{{ item.short_url or item.canonical_url }}">{{ item.title }}</a>
-<p>{{ item.summary }}</p>
-<p class="source">via {{ item.source_handle }}{% if item.alt_sources %} + {{ item.alt_sources | length }} autres{% endif %}</p>
-</article>
+{{ render_item(item) }}
 {% else %}
-<p class="source"><em>Rien de marquant dans la fenêtre.</em></p>
+<p class="empty">Rien de marquant dans la fenêtre.</p>
 {% endfor %}
 {% endfor %}
 
 {% if briefing.dont_miss %}
 <h2>📌 À NE PAS MANQUER</h2>
-<article>
-<a href="{{ briefing.dont_miss.short_url or briefing.dont_miss.canonical_url }}">{{ briefing.dont_miss.title }}</a>
-<p>{{ briefing.dont_miss.summary }}</p>
-<p class="source">via {{ briefing.dont_miss.source_handle }}</p>
-</article>
+{{ render_item(briefing.dont_miss, hero=true) }}
 {% endif %}
 
 <p class="meta">
-briefing_id: {{ briefing.briefing_id }} ·
+briefing: {{ briefing.briefing_id }} ·
 config: {{ briefing.config_hash[:7] }} ·
 git: {{ briefing.git_commit }} ·
 prompts: {{ briefing.prompts_version }} ·
