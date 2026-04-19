@@ -107,6 +107,11 @@ _SOURCE_TYPE_BY_TOOL: dict[str, Literal["x_account", "x_search", "web"]] = {
 # x_search avec allowed_x_handles.
 MAX_HANDLES_PER_CALL = 10
 
+# Limite xAI confirmée au premier live test post-#24 (issue #31) :
+# max 5 domaines par appel web_search avec allowed_domains. Provoque un
+# 400 "A maximum of 5 domains can be allowed" au-delà.
+MAX_DOMAINS_PER_CALL = 5
+
 # Quantités par défaut demandées au LLM (peut être tweaké via param fonction).
 DEFAULT_MAX_ACCOUNTS_TOTAL = 12
 DEFAULT_MAX_WEB_TOTAL = 8
@@ -273,45 +278,52 @@ def source_briefing(
         warnings.extend(new_warnings)
         total_usage = _add_usage(total_usage, new_usage)
 
-    # -- 3. Recherche web (UN seul appel) ----------------------------------
-    web_user_prompt = _render_prompt(
-        env,
-        "search_web.txt",
-        {
-            "allowed_domains": config["sources_web"],
-            "section_ids": section_ids,
-            "window_start_iso": window_start_iso,
-            "window_end_iso": window_end_iso,
-            "max_items_total": min(DEFAULT_MAX_WEB_TOTAL, max_items_per_call),
-        },
-    )
+    # -- 3. Recherche web (batchs de MAX_DOMAINS_PER_CALL, issue #31) ------
+    # xAI web_search plafonne à 5 domaines par appel. Même pattern que les
+    # comptes X (max 10) : on splitte en batches. N domaines / 5 → ceil appels.
+    sources_web_all = config["sources_web"]
+    web_batches = list(_chunk(sources_web_all, MAX_DOMAINS_PER_CALL))
+    for batch_idx, domains_batch in enumerate(web_batches, start=1):
+        prompt_label = f"search_web_{batch_idx}"
 
-    # TODO(live): verify web_search params — la doc xAI accessible ne fige
-    # pas le nom exact du champ (`allowed_domains` vs `domains` vs autre)
-    # ni la prise en charge de `from_date`/`to_date` côté tool.
-    web_tool_params = {
-        "allowed_domains": config["sources_web"],
-        "from_date": from_date,
-        "to_date": to_date,
-    }
+        web_user_prompt = _render_prompt(
+            env,
+            "search_web.txt",
+            {
+                "allowed_domains": domains_batch,
+                "section_ids": section_ids,
+                "window_start_iso": window_start_iso,
+                "window_end_iso": window_end_iso,
+                "max_items_total": min(DEFAULT_MAX_WEB_TOTAL, max_items_per_call),
+            },
+        )
 
-    new_items, new_warnings, new_usage = _do_call(
-        client=client,
-        system_prompt=system_prompt,
-        user_prompt=web_user_prompt,
-        tool="web_search",
-        tool_params=web_tool_params,
-        prompt_label="search_web",
-        window_start=window_start,
-        window_end=window_end,
-        valid_section_ids=valid_section_ids,
-        default_source_type="web",
-        # Web : le LLM classe, pas de default_section_id (articles couvrent
-        # politique, business, santé, etc.). Items sans section_id dropped.
-    )
-    items.extend(new_items)
-    warnings.extend(new_warnings)
-    total_usage = _add_usage(total_usage, new_usage)
+        # TODO(live): verify web_search params — la doc xAI accessible ne fige
+        # pas le nom exact du champ (`allowed_domains` vs `domains` vs autre)
+        # ni la prise en charge de `from_date`/`to_date` côté tool.
+        web_tool_params = {
+            "allowed_domains": domains_batch,
+            "from_date": from_date,
+            "to_date": to_date,
+        }
+
+        new_items, new_warnings, new_usage = _do_call(
+            client=client,
+            system_prompt=system_prompt,
+            user_prompt=web_user_prompt,
+            tool="web_search",
+            tool_params=web_tool_params,
+            prompt_label=prompt_label,
+            window_start=window_start,
+            window_end=window_end,
+            valid_section_ids=valid_section_ids,
+            default_source_type="web",
+            # Web : le LLM classe, pas de default_section_id (articles couvrent
+            # politique, business, santé, etc.). Items sans section_id dropped.
+        )
+        items.extend(new_items)
+        warnings.extend(new_warnings)
+        total_usage = _add_usage(total_usage, new_usage)
 
     return SourcingResult(items=items, warnings=warnings, total_usage=total_usage)
 

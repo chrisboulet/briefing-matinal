@@ -169,7 +169,7 @@ def test_all_three_source_types_invoked(base_config, window) -> None:
     labels = [c["prompt_label"] for c in client.calls]
     assert any(label.startswith("search_accounts_") for label in labels)
     assert any(label.startswith("search_theme_") for label in labels)
-    assert "search_web" in labels
+    assert any(label.startswith("search_web_") for label in labels)
 
 
 def test_15_accounts_split_into_two_calls(base_config, window) -> None:
@@ -200,6 +200,7 @@ def test_n_themes_yields_n_calls(base_config, window) -> None:
 
 
 def test_web_yields_one_call(base_config, window) -> None:
+    """base_config a 2 domaines → 1 seul batch (≤ MAX_DOMAINS_PER_CALL=5)."""
     start, end = window
     client = StubClient(lambda i, r: _ok_response())
     source_briefing(
@@ -207,8 +208,49 @@ def test_web_yields_one_call(base_config, window) -> None:
         window_start=start, window_end=end,
         prompts_dir=PROMPTS_DIR,
     )
-    web_calls = [c for c in client.calls if c["prompt_label"] == "search_web"]
+    web_calls = [c for c in client.calls if c["prompt_label"].startswith("search_web_")]
     assert len(web_calls) == 1
+    assert web_calls[0]["prompt_label"] == "search_web_1"
+
+
+def test_web_batched_when_more_than_5_domains(base_config, window) -> None:
+    """Issue #31 : xAI web_search plafonne à 5 domaines. 8 domaines → 2 batches
+    (5 + 3), même pattern que les comptes X splittés par MAX_HANDLES_PER_CALL."""
+    start, end = window
+    cfg = {
+        **base_config,
+        "sources_web": [f"site{i}.example.com" for i in range(8)],
+    }
+    client = StubClient(lambda i, r: _ok_response())
+    source_briefing(
+        client=client, config=cfg,
+        window_start=start, window_end=end,
+        prompts_dir=PROMPTS_DIR,
+    )
+    web_calls = [c for c in client.calls if c["prompt_label"].startswith("search_web_")]
+    assert len(web_calls) == 2
+    # Chaque batch doit contenir AU PLUS 5 domaines
+    for call in web_calls:
+        domains = call["tool_params"]["allowed_domains"]
+        assert len(domains) <= 5, f"batch {call['prompt_label']} a {len(domains)} domaines"
+    # Tous les domaines doivent être couverts, sans doublon
+    all_sent = [d for call in web_calls for d in call["tool_params"]["allowed_domains"]]
+    assert sorted(all_sent) == sorted(cfg["sources_web"])
+    assert len(set(all_sent)) == len(all_sent)  # pas de doublon
+
+
+def test_web_no_call_when_sources_empty(base_config, window) -> None:
+    """sources_web vide → aucun appel web (pas de 400 avec allowed_domains=[])."""
+    start, end = window
+    cfg = {**base_config, "sources_web": []}
+    client = StubClient(lambda i, r: _ok_response())
+    source_briefing(
+        client=client, config=cfg,
+        window_start=start, window_end=end,
+        prompts_dir=PROMPTS_DIR,
+    )
+    web_calls = [c for c in client.calls if c["prompt_label"].startswith("search_web_")]
+    assert web_calls == []
 
 
 def test_total_call_count(base_config, window) -> None:
@@ -220,6 +262,8 @@ def test_total_call_count(base_config, window) -> None:
         prompts_dir=PROMPTS_DIR,
     )
     n_themes = len(base_config["recherches_thematiques"])
+    # base_config : 15 handles / 10 = 2 batches accounts + N themes + 1 web batch
+    # (2 domaines → 1 seul batch, ≤ 5)
     expected = 2 + n_themes + 1
     assert len(client.calls) == expected
 
@@ -500,10 +544,11 @@ def test_web_call_tool_params(base_config, window) -> None:
         window_start=start, window_end=end,
         prompts_dir=PROMPTS_DIR,
     )
-    web_call = next(c for c in client.calls if c["prompt_label"] == "search_web")
+    web_call = next(c for c in client.calls if c["prompt_label"].startswith("search_web_"))
     assert web_call["tool"] == "web_search"
     params = web_call["tool_params"]
     assert "allowed_domains" in params
+    # base_config a ≤ 5 domaines → un seul batch contient TOUS les domaines
     assert params["allowed_domains"] == base_config["sources_web"]
     assert "from_date" in params and "to_date" in params
 
