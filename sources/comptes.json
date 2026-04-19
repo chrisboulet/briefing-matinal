@@ -1,0 +1,42 @@
+{
+  "comptes_x": [
+    "@karpathy",
+    "@DanielMiessler",
+    "@AnthropicAI",
+    "@OpenAI",
+    "@cernbasher",
+    "@WholeMarsBlog",
+    "@SpaceX",
+    "@davidasinclair",
+    "@PeterAttiaMD",
+    "@hubermanlab",
+    "@CleoAbram",
+    "@DiaryOfACEO",
+    "@TomBilyeu",
+    "@JDeQuebec",
+    "@lesaffaires"
+  ],
+  "recherches_thematiques": [
+    {"theme": "Tesla", "query": "Tesla FSD robotaxi Optimus Cybertruck energy"},
+    {"theme": "SpaceX", "query": "SpaceX Starship Starlink launch"},
+    {"theme": "Santé", "query": "longevity fasting intermittent menopause NMN aging reverse"},
+    {"theme": "Politique Canada", "query": "Canada Quebec politique gouvernement"},
+    {"theme": "Politique US", "query": "US politics Trump administration policy"},
+    {"theme": "Politique International", "query": "geopolitics world news international"},
+    {"theme": "Business", "query": "marchés bourse économie Québec Canada business"},
+    {"theme": "AI", "query": "AI LLM Claude GPT Gemini model release agent coding"}
+  ],
+  "sources_web": [
+    "journaldequebec.com",
+    "lesaffaires.com",
+    "lapresse.ca"
+  ],
+  "sections": [
+    {"id": "ai-tech", "label": "AI / Tech", "emoji": "🤖", "max_items": 5},
+    {"id": "tesla", "label": "Tesla", "emoji": "🚗", "max_items": 3},
+    {"id": "spacex", "label": "SpaceX", "emoji": "🚀", "max_items": 2},
+    {"id": "sante", "label": "Santé", "emoji": "🏥", "max_items": 3},
+    {"id": "politique", "label": "Politique", "emoji": "🏛️", "max_items": 3},
+    {"id": "business", "label": "Business", "emoji": "💼", "max_items": 3}
+  ]
+}
