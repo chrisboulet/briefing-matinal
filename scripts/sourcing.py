@@ -17,11 +17,12 @@ Conception :
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
@@ -30,6 +31,16 @@ from scripts.models import Item
 from scripts.xai_client import XAIClient, XAIError, XAIResponse, XAIUsage, iso_date
 
 logger = logging.getLogger(__name__)
+
+# "Financial Times (@FT)" → @FT ; retourne None si aucun @handle trouvé.
+_HANDLE_RE = re.compile(r"@[A-Za-z0-9_]{1,30}")
+
+# Mapping tool → source_type par défaut quand le LLM n'en fournit pas (issue #17).
+_SOURCE_TYPE_BY_TOOL: dict[str, Literal["x_account", "x_search", "web"]] = {
+    "x_search_accounts": "x_account",
+    "x_search_theme": "x_search",
+    "web_search": "web",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +162,9 @@ def source_briefing(
             window_start=window_start,
             window_end=window_end,
             valid_section_ids=valid_section_ids,
+            default_source_type="x_account",
+            # Pas de default_section_id pour accounts : le LLM doit classer
+            # chaque post selon son topic. Items sans section_id sont dropped.
         )
         items.extend(new_items)
         warnings.extend(new_warnings)
@@ -196,6 +210,8 @@ def source_briefing(
             window_start=window_start,
             window_end=window_end,
             valid_section_ids=valid_section_ids,
+            default_section_id=section_id,  # theme → section fixe
+            default_source_type="x_search",
         )
         items.extend(new_items)
         warnings.extend(new_warnings)
@@ -233,6 +249,9 @@ def source_briefing(
         window_start=window_start,
         window_end=window_end,
         valid_section_ids=valid_section_ids,
+        default_source_type="web",
+        # Web : le LLM classe, pas de default_section_id (articles couvrent
+        # politique, business, santé, etc.). Items sans section_id dropped.
     )
     items.extend(new_items)
     warnings.extend(new_warnings)
@@ -278,9 +297,14 @@ def _do_call(
     window_start: datetime,
     window_end: datetime,
     valid_section_ids: set[str],
+    default_section_id: str | None = None,
+    default_source_type: str | None = None,
 ) -> tuple[list[Item], list[str], XAIUsage]:
     """
     Effectue un appel xAI et convertit la réponse en items normalisés.
+
+    `default_*` servent au fallback dans `_to_item` quand le modèle passe
+    les résultats des tools en shape native (issue #17).
 
     Sur XAIError, retourne ([], [warning], usage_zéro) et logue — n'élève jamais.
     """
@@ -306,12 +330,19 @@ def _do_call(
         window_start=window_start,
         window_end=window_end,
         valid_section_ids=valid_section_ids,
+        default_section_id=default_section_id,
+        default_source_type=default_source_type,
     )
 
     # Warnings émis par le LLM lui-même (ex: "aucun post pour @X").
-    # TODO(live): valider que `parsed_output["warnings"]` est toujours présent
-    # quand le json_schema strict côté API est respecté.
-    llm_warnings = response.parsed_output.get("warnings", []) or []
+    # Normalisé en list[str] par xai_client._parse_response (issue #17).
+    llm_warnings_raw = response.parsed_output.get("warnings", [])
+    if isinstance(llm_warnings_raw, str):
+        llm_warnings = [llm_warnings_raw]
+    elif isinstance(llm_warnings_raw, list):
+        llm_warnings = [str(w) for w in llm_warnings_raw]
+    else:
+        llm_warnings = []
     all_warnings = [f"{prompt_label}: {w}" for w in llm_warnings] + parse_warnings
 
     return items, all_warnings, response.usage
@@ -324,6 +355,8 @@ def _items_from_response(
     window_start: datetime,
     window_end: datetime,
     valid_section_ids: set[str],
+    default_section_id: str | None = None,
+    default_source_type: str | None = None,
 ) -> tuple[list[Item], list[str]]:
     """
     Convertit `response.parsed_output["items"]` en liste d'Item validés.
@@ -332,6 +365,10 @@ def _items_from_response(
       - drop si published_at hors fenêtre (le LLM peut fudge)
       - drop si section_id non configuré
       - drop si la conversion lève une erreur (warning + skip)
+
+    `default_*` propagés vers `_to_item` pour combler les champs manquants
+    quand le modèle retourne la shape native xAI (issue #17).
+    `window_end` sert aussi de fallback `published_at` pour les items sans date.
     """
     raw_items = response.parsed_output.get("items", []) or []
     out: list[Item] = []
@@ -339,7 +376,12 @@ def _items_from_response(
 
     for raw in raw_items:
         try:
-            item = _to_item(raw)
+            item = _to_item(
+                raw,
+                default_section_id=default_section_id,
+                default_source_type=default_source_type,
+                fallback_published_at=window_end,
+            )
         except (KeyError, ValueError, TypeError) as exc:
             warnings.append(
                 f"{prompt_label}: skipped malformed item ({type(exc).__name__}: {exc})"
@@ -364,34 +406,98 @@ def _items_from_response(
     return out, warnings
 
 
-def _to_item(raw: dict[str, Any]) -> Item:
+def _to_item(
+    raw: dict[str, Any],
+    *,
+    default_section_id: str | None = None,
+    default_source_type: str | None = None,
+    fallback_published_at: datetime | None = None,
+) -> Item:
     """
     Construit un Item à partir du dict brut renvoyé par le LLM.
 
-    L'URL est canonisée (dedupe-friendly) et l'ID dérivé de cette URL.
-    Les champs absents du payload LLM (alt_sources, short_url, raw_excerpt)
-    reçoivent des valeurs par défaut neutres.
+    Accepte deux shapes (issue #17) :
+    1. Shape idéale (demandée par le prompt) : `{title, summary, canonical_url,
+       section_id, source_type, source_handle, published_at, score, likes, reposts}`
+    2. Shape native xAI (observée en pratique) : `{post_id, author, content,
+       engagement: {likes, reposts, views}, link}` — le modèle passe souvent
+       les résultats des tools tels quels.
+
+    Le contexte (`default_*`) permet de combler les champs que la shape native
+    ne fournit pas (section_id pour theme calls, source_type par tool,
+    published_at via window_end si absent).
     """
-    canonical = canonical_url(raw["canonical_url"])
-    published_at = datetime.fromisoformat(raw["published_at"].replace("Z", "+00:00"))
+    # URL : `canonical_url` (idéal) ou `link` / `url` (xAI native)
+    url = raw.get("canonical_url") or raw.get("link") or raw.get("url")
+    if not isinstance(url, str) or not url:
+        raise KeyError("no URL field (canonical_url/link/url) in item")
+    canonical = canonical_url(url)
+
+    # Engagement : flat (idéal) ou nested sous `engagement`
+    engagement = raw.get("engagement") if isinstance(raw.get("engagement"), dict) else {}
+    likes = int(raw.get("likes", engagement.get("likes", 0)) or 0)
+    reposts = int(raw.get("reposts", engagement.get("reposts", 0)) or 0)
+
+    # Title : explicit ou première ligne de `content`
+    title = raw.get("title")
+    if not isinstance(title, str) or not title.strip():
+        content = raw.get("content") or ""
+        title = content.split("\n", 1)[0][:200].strip() or "(sans titre)"
+
+    # Summary : explicit ou `content` (truncate pour budget rendu)
+    summary = raw.get("summary") or raw.get("content") or title
+    summary = str(summary)[:800]
+
+    # Source handle : explicit ou parse de `author` ("Name (@handle)")
+    source_handle = raw.get("source_handle")
+    if not isinstance(source_handle, str) or not source_handle.strip():
+        author = raw.get("author") or ""
+        match = _HANDLE_RE.search(author) if isinstance(author, str) else None
+        source_handle = match.group(0) if match else (author or "unknown")
+
+    # Source type : explicit ou default du call
+    source_type = raw.get("source_type") or default_source_type
+    if source_type not in ("x_account", "x_search", "web"):
+        raise KeyError(f"source_type invalid/missing (got {source_type!r})")
+
+    # Section_id : explicit ou default du call (theme calls seulement)
+    section_id = raw.get("section_id") or default_section_id
+    if not isinstance(section_id, str) or not section_id:
+        raise KeyError("section_id missing and no default_section_id provided")
+
+    # Published_at : ISO string ou fallback (window_end)
+    pub = raw.get("published_at") or raw.get("created_at")
+    if isinstance(pub, str) and pub:
+        published_at = datetime.fromisoformat(pub.replace("Z", "+00:00"))
+    elif fallback_published_at is not None:
+        published_at = fallback_published_at
+    else:
+        raise KeyError("published_at missing and no fallback provided")
+
+    # Score : 0.0-1.0 (default 0.5 si absent ou invalide)
+    try:
+        score = float(raw.get("score", 0.5))
+    except (TypeError, ValueError):
+        score = 0.5
+    score = max(0.0, min(1.0, score))
 
     return Item(
         id=item_id(canonical),
-        title=raw["title"],
-        summary=raw["summary"],
+        title=title,
+        summary=summary,
         canonical_url=canonical,
-        section_id=raw["section_id"],
-        source_type=raw["source_type"],
-        source_handle=raw["source_handle"],
+        section_id=section_id,
+        source_type=source_type,  # type: ignore[arg-type]
+        source_handle=source_handle,
         published_at=published_at,
-        score=float(raw["score"]),
+        score=score,
         short_url="",
         raw_excerpt="",
         alt_sources=(),
         is_reply=False,
         is_retweet=False,
-        likes=int(raw.get("likes", 0)),
-        reposts=int(raw.get("reposts", 0)),
+        likes=likes,
+        reposts=reposts,
     )
 
 

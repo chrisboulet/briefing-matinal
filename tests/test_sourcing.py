@@ -555,3 +555,174 @@ def test_theme_user_prompt_mentions_theme_name(base_config, window) -> None:
         # The label is "search_theme_<theme>"; the theme name should appear in the rendered prompt.
         theme_name = call["prompt_label"].removeprefix("search_theme_")
         assert theme_name in call["user_prompt"]
+
+
+# ---------------------------------------------------------------------------
+# Issue #17 : adapter _to_item pour shape native xAI
+# ---------------------------------------------------------------------------
+
+
+def test_to_item_accepts_xai_native_shape(base_config, window):
+    """xAI tool results have shape {post_id, author, content, engagement, link}
+    at the top level. The adapter must map them to our Item fields."""
+    from scripts.sourcing import _to_item
+
+    _, end = window
+    raw_native = {
+        "post_id": 2045842784033059114,
+        "author": "Financial Times (@FT)",
+        "content": "Recursive Superintelligence has been valued at $500B in latest round.",
+        "engagement": {"likes": 312, "reposts": 42, "views": 87491},
+        "link": "https://www.ft.com/content/a92bf04b-bbac-400f-9554-5b1c70957ad4",
+    }
+    item = _to_item(
+        raw_native,
+        default_section_id="ai-tech",
+        default_source_type="x_search",
+        fallback_published_at=end,
+    )
+    assert item.canonical_url == "https://www.ft.com/content/a92bf04b-bbac-400f-9554-5b1c70957ad4"
+    assert item.source_handle == "@FT"  # parsed from "Financial Times (@FT)"
+    assert item.likes == 312
+    assert item.reposts == 42
+    assert item.section_id == "ai-tech"
+    assert item.source_type == "x_search"
+    assert item.published_at == end  # fallback
+    assert "Recursive Superintelligence" in item.summary
+    assert item.score == 0.5  # default when missing
+
+
+def test_to_item_prefers_ideal_over_native_fields(base_config):
+    """When BOTH ideal and native fields are present, ideal wins (prompt worked)."""
+    from scripts.sourcing import _to_item
+
+    raw = {
+        # Ideal shape
+        "title": "Ideal title",
+        "summary": "Ideal summary",
+        "canonical_url": "https://ideal.example.com/a",
+        "source_handle": "@ideal",
+        "source_type": "x_account",
+        "published_at": "2026-04-19T03:00:00Z",
+        "score": 0.85,
+        "section_id": "ai-tech",
+        "likes": 100,
+        "reposts": 20,
+        # Also native fields (should be ignored)
+        "content": "Native content",
+        "link": "https://native.example.com/b",
+        "author": "Native Name (@native)",
+        "engagement": {"likes": 999, "reposts": 999},
+    }
+    item = _to_item(raw)
+    assert item.title == "Ideal title"
+    assert item.canonical_url == "https://ideal.example.com/a"
+    assert item.source_handle == "@ideal"
+    assert item.likes == 100
+
+
+def test_to_item_raises_on_missing_section_id_and_no_default(base_config):
+    from scripts.sourcing import _to_item
+
+    raw_native = {
+        "content": "A tweet",
+        "link": "https://x.com/a/status/1",
+        "author": "@a",
+    }
+    # No default_section_id → must raise
+    with pytest.raises(KeyError, match="section_id"):
+        _to_item(raw_native, default_source_type="x_account", fallback_published_at=datetime.now(UTC))
+
+
+def test_to_item_parses_bare_author_without_handle(base_config):
+    from scripts.sourcing import _to_item
+
+    raw = {
+        "content": "Post text",
+        "link": "https://x.com/a/status/1",
+        "author": "Some Org Without Handle",
+    }
+    item = _to_item(
+        raw, default_section_id="ai-tech", default_source_type="x_search",
+        fallback_published_at=datetime.now(UTC),
+    )
+    # No @ in author → falls back to the raw author string
+    assert item.source_handle == "Some Org Without Handle"
+
+
+def test_theme_call_injects_default_section_id(base_config, window):
+    """Theme calls pass default_section_id so native-shape items still classify."""
+    start, end = window
+    cfg = {**base_config, "comptes_x": [], "sources_web": [],
+           "recherches_thematiques": [
+               {"theme": "Tesla", "query": "tesla", "section_id": "tesla"}
+           ]}
+    native_item = {
+        "post_id": 1,
+        "author": "Tesla (@Tesla)",
+        "content": "Cybertruck production hits milestone",
+        "engagement": {"likes": 5000, "reposts": 800},
+        "link": "https://x.com/Tesla/status/1",
+    }
+    # Only one call expected (no accounts, no themes but Tesla, no web): actually
+    # 1 theme + 1 web = 2 calls. First is theme (Tesla), second is web.
+    client = StubClient([_ok_response(items=[native_item]), _ok_response()])
+
+    result = source_briefing(
+        client=client, config=cfg,
+        window_start=start, window_end=end,
+        prompts_dir=PROMPTS_DIR,
+    )
+    assert len(result.items) == 1
+    item = result.items[0]
+    assert item.section_id == "tesla"  # from default, LLM didn't provide
+    assert item.source_type == "x_search"
+    assert item.source_handle == "@Tesla"
+
+
+def test_account_call_drops_items_without_section_id(base_config, window):
+    """Account calls don't inject default_section_id — items without section_id
+    are dropped with a warning (can't classify across 15 handles deterministically)."""
+    start, end = window
+    cfg = {**base_config, "comptes_x": ["@karpathy"], "recherches_thematiques": [], "sources_web": []}
+    native_no_section = {
+        "post_id": 1,
+        "author": "@karpathy",
+        "content": "Some tweet",
+        "engagement": {"likes": 1000, "reposts": 100},
+        "link": "https://x.com/karpathy/status/1",
+    }
+    client = StubClient([_ok_response(items=[native_no_section]), _ok_response()])
+
+    result = source_briefing(
+        client=client, config=cfg,
+        window_start=start, window_end=end,
+        prompts_dir=PROMPTS_DIR,
+    )
+    assert result.items == []
+    assert any("section_id" in w for w in result.warnings)
+
+
+def test_warnings_string_does_not_iterate_char_by_char(base_config, window):
+    """Issue #17 bug 2 : if `parsed_output["warnings"]` is a string, it
+    must not be iterated char-by-char when building all_warnings."""
+    start, end = window
+    cfg = {**base_config, "comptes_x": ["@a"], "recherches_thematiques": [], "sources_web": []}
+    # Simulate xai_client normalization result: string wrapped in list.
+    resp_with_str_warning = XAIResponse(
+        parsed_output={"items": [], "warnings": ["Aucun résultat pour @a"]},
+        usage=XAIUsage(input_tokens=1, output_tokens=1, tool_calls=0),
+        duration_ms=10, model="stub",
+    )
+    client = StubClient([resp_with_str_warning, _ok_response()])
+
+    result = source_briefing(
+        client=client, config=cfg,
+        window_start=start, window_end=end,
+        prompts_dir=PROMPTS_DIR,
+    )
+    # Must see ONE warning with the full message, not 20+ single-char warnings.
+    matching = [w for w in result.warnings if "Aucun résultat pour @a" in w]
+    assert len(matching) == 1
+    # Also assert no single-char warnings
+    assert not any(len(w.split(": ", 1)[-1]) == 1 for w in result.warnings)

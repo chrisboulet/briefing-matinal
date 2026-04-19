@@ -24,4 +24,10 @@ Same scale as `search_accounts`. Calibrate down vs account-curated content (anon
 # Quantity
 Return up to {{ max_items }} items. Quality > quantity.
 
+# REMINDER : output schema (see system prompt)
+- Exact shape: `{"items": [<item>, ...], "warnings": [...]}`
+- Each item uses EXACT field names: `title, summary, canonical_url, source_type, source_handle, published_at, score, section_id, likes, reposts`
+- Do NOT return `{post_id, author, content, engagement, link}` — transform to the schema
+- For this call: `source_type="x_search"`, `section_id="{{ section_id }}"`
+
 Return JSON only.
