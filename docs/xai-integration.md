@@ -9,7 +9,7 @@ Le briefing utilise **xAI Grok via la Responses API** (`POST https://api.x.ai/v1
 | Quoi | Valeur |
 |---|---|
 | Endpoint | `POST https://api.x.ai/v1/responses` |
-| Modèle V1 | `grok-4-1-fast-latest` (escalade `grok-4.20-latest` si qualité insuffisante) |
+| Modèle V1 | `grok-4-1-fast-non-reasoning` (escalade possible vers `-reasoning` puis `grok-4.20-0309-reasoning` si qualité insuffisante) |
 | Auth | `Authorization: Bearer ${XAI_API_KEY}` |
 | Tools | `x_search`, `web_search` (server-side, intégrés xAI) |
 | Output format | `response_format: json_schema` (forçage JSON valide) |
@@ -20,17 +20,35 @@ Le briefing utilise **xAI Grok via la Responses API** (`POST https://api.x.ai/v1
 | Var | Requis | Exemple | Description |
 |---|---|---|---|
 | `XAI_API_KEY` | Oui en mode `live` | `xai-...` | Injectée par hermes-agent au runtime |
-| `XAI_MODEL` | Non | `grok-4-1-fast-latest` | Override du modèle (défaut alias `-latest`) |
+| `XAI_MODEL` | Non | `grok-4-1-fast-non-reasoning` | Override du modèle (voir liste complète ci-dessous) |
 | `XAI_TIMEOUT_S` | Non | `30` | Timeout par appel HTTP (défaut 30s) |
 | `XAI_MAX_RETRIES` | Non | `2` | Retries sur 5xx (défaut 2, total 3 essais) |
 
 Mode `fixture` (Phase 1) : aucune variable xAI requise.
 
+## Modèles disponibles
+
+Aucun alias `-latest` exposé par xAI (vérifié `GET /v1/models` le 2026-04-19). Liste exhaustive :
+
+| Modèle | Usage V1 | Coût indicatif |
+|---|---|---|
+| `grok-4-1-fast-non-reasoning` | **Défaut** — extraction + ranking structuré | 0.20 / 0.50 $ per M input/output |
+| `grok-4-1-fast-reasoning` | Escalade 1 si qualité insuffisante (+ thinking tokens) | idem input, output gonflé |
+| `grok-4-fast-non-reasoning` | Variante plus petite, pas notre cible | cheaper |
+| `grok-4-fast-reasoning` | idem + thinking | cheaper input, output gonflé |
+| `grok-4.20-0309-non-reasoning` | Flagship sans thinking | 3.00 / 15.00 $ per M |
+| `grok-4.20-0309-reasoning` | Escalade 2 — flagship complet | idem + thinking tokens |
+
+Toute modification du modèle doit :
+1. Mettre à jour `DEFAULT_MODEL` dans `scripts/xai_client.py` OU exporter `XAI_MODEL`
+2. Mettre à jour la section "Coût" ci-dessous si le pricing diffère
+3. Bumper `PROMPTS_VERSION` si la bascule change le comportement attendu des prompts
+
 ## Forme de la requête
 
 ```json
 {
-  "model": "grok-4-1-fast-latest",
+  "model": "grok-4-1-fast-non-reasoning",
   "input": [
     {"role": "system", "content": "<contenu de prompts/system.txt>"},
     {"role": "user",   "content": "<prompt rendu Jinja>"}
@@ -130,7 +148,7 @@ Le caller (`sourcing.py`) catch les exceptions et **dégrade gracieusement** : u
 
 ## Coût et budget
 
-Pricing avril 2026 (`grok-4-1-fast-latest`) :
+Pricing avril 2026 (`grok-4-1-fast-non-reasoning`) :
 - **0.20 $ / 1M tokens input**
 - **0.50 $ / 1M tokens output**
 - **5 $ / 1000 appels d'outil server-side** (`x_search`, `web_search`)

@@ -82,7 +82,7 @@ def _source_via_xai(
             "Use --fixture for offline mode."
         )
 
-    model = os.environ.get("XAI_MODEL", "grok-4-1-fast-latest")
+    model = os.environ.get("XAI_MODEL", "grok-4-1-fast-non-reasoning")
     timeout_s = float(os.environ.get("XAI_TIMEOUT_S", "30"))
 
     with XAIClient(api_key=api_key, model=model, timeout_s=timeout_s) as client:
