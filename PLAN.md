@@ -2,6 +2,31 @@
 
 > Ce document détaille l'ordre et la structure d'implémentation de la V1 du pipeline, tel que spécifié dans `PRD.md` v2. Il est destiné à être relu avant chaque commit pour s'assurer qu'on reste dans le scope.
 
+## 🚦 État d'avancement (mis à jour 2026-04-19)
+
+| Phase | Statut | PR | SHA | Tests cumulés |
+|---|---|---|---|---|
+| 0 — Scaffolding | ✅ Mergé | [#2](https://github.com/chrisboulet/briefing-matinal/pull/2) | `de9b8e2` | 0 |
+| 1 — Pipeline offline | ✅ Mergé | [#3](https://github.com/chrisboulet/briefing-matinal/pull/3) | `05f8f2b` | 30 |
+| 2 — Template HTML prod | ✅ Mergé | [#4](https://github.com/chrisboulet/briefing-matinal/pull/4) | `b0ca7f1` | 45 |
+| 3 — Intégration xAI | ✅ Mergé | [#6](https://github.com/chrisboulet/briefing-matinal/pull/6) | `09e4c8a` | **104** |
+| 4 — Redirector Tailscale | ⏳ À faire | — | — | — |
+| 5 — Intégration hermes-agent | ⏳ À faire | — | — | — |
+| 6 — Tests étendus | ⏳ À faire | — | — | — |
+| 7 — Mise en service V1 | ⏳ À faire | — | — | — |
+
+**PR bonus** : [#5](https://github.com/chrisboulet/briefing-matinal/pull/5) — `docs/preview/sample-matin.html` (snapshot HTML pour visualisation navigateur).
+
+**Métriques actuelles** :
+- Tests : **104/104 verts** en 1.9s (`pytest -q`)
+- Lint : `ruff check .` → All checks passed
+- Briefing complet (17 items via fixture) : **8.1 KB** (6× sous budget 50 KB)
+- Mode live xAI **câblé mais non encore validé** sur API réelle (requiert `XAI_API_KEY`)
+
+**Prochaines étapes** : Phase 4 (redirector Tailscale) parallélisable avec Phase 5 (intégration hermes-agent). Phase 6 (tests étendus) au fil. Phase 7 (go-live) une fois mode live validé sur premier appel réel.
+
+---
+
 ## Contexte
 
 - **PRD source** : `PRD.md` (v2, commit `5a61521`)
@@ -41,7 +66,7 @@ Phases 1 et 2 peuvent se chevaucher si besoin. Phase 4 (redirector) est indépen
 
 ---
 
-## Phase 0 — Scaffolding
+## Phase 0 — Scaffolding ✅ Mergé via PR #2 (`de9b8e2`)
 
 **Objectif** : poser la structure du repo et les dépendances sans écrire de logique métier.
 
@@ -100,7 +125,7 @@ dev = [
 
 ---
 
-## Phase 1 — Pipeline offline avec fixtures
+## Phase 1 — Pipeline offline avec fixtures ✅ Mergé via PR #3 (`05f8f2b`)
 
 **Objectif** : produire un HTML de briefing complet à partir de fixtures JSON, sans aucun appel externe. **C'est le milestone le plus important de V1** — si ça marche ici, le reste est du branchement.
 
@@ -168,7 +193,7 @@ Comportement :
 
 ---
 
-## Phase 2 — Template HTML final
+## Phase 2 — Template HTML final ✅ Mergé via PR #4 (`b0ca7f1`)
 
 **Objectif** : transformer le placeholder Phase 1 en template production-ready : mobile-first, dark/light auto, accessibilité AA, budget lisibilité ~50 KB.
 
@@ -249,9 +274,16 @@ Dans `render.py`, après rendu Jinja, vérifier :
 
 ---
 
-## Phase 3 — Intégration xAI Grok Responses API
+## Phase 3 — Intégration xAI Grok Responses API ✅ Mergé via PR #6 (`09e4c8a`)
 
 **Objectif** : remplacer les fixtures par de vrais appels à l'API xAI. On garde le mode fixture pour les tests et le dev offline.
+
+**Notes post-merge** :
+- Délégation à 2 subagents pour qualité indépendante (reviewer + tests writer)
+- 3 CRITICAL + 7 MAJOR identifiés et fixés AVANT que les tests soient écrits (format:uri/date-time incompat strict json_schema, 429 retry off-by-one, backoff cap, tool_params validation, etc.)
+- 59 tests via mocks (pytest-httpx + StubClient) — aucun appel réel
+- `# TODO(live):` marqueurs aux endroits où la doc xAI accessible ne fige pas la forme exacte (extraction `output_text`, nom champ `tool_calls`, params `web_search`)
+- **À valider** sur premier appel réel avec `XAI_API_KEY`
 
 ### Livrables
 
@@ -336,7 +368,7 @@ Le CLI `build_briefing.py` détecte :
 
 ---
 
-## Phase 4 — Redirector + tracking (Tailscale)
+## Phase 4 — Redirector + tracking (Tailscale) ⏳ À faire
 
 **Objectif** : déployer le service FastAPI qui raccourcit les URLs et logge les clics. Indépendante des phases 1-3 — peut se faire en parallèle.
 
@@ -398,7 +430,7 @@ CREATE INDEX idx_clicks_at ON clicks(clicked_at);
 
 ---
 
-## Phase 5 — Intégration hermes-agent
+## Phase 5 — Intégration hermes-agent ⏳ À faire
 
 **Objectif** : brancher le pipeline sur le cron hermes-agent, valider le contrat stdout JSON, activer le fallback NAS.
 
@@ -454,9 +486,11 @@ CREATE INDEX idx_clicks_at ON clicks(clicked_at);
 
 ---
 
-## Phase 6 — Tests & validation
+## Phase 6 — Tests & validation ⏳ À faire (déjà 104 tests verts via Phases 1-3)
 
 **Objectif** : suite de tests verte, couvrant les cas tordus + un test end-to-end avec fixtures.
+
+> Mise à jour 2026-04-19 : la majorité des tests prévus pour cette phase ont déjà été écrits au fil des phases 1-3 (`test_dedup`, `test_select`, `test_window`, `test_render`, `test_e2e_offline`, `test_xai_client`, `test_sourcing`). Phase 6 se réduit à l'ajout des tests "pièges" résiduels (DST switch, schema invalid, fixtures additionnelles edge cases).
 
 ### Livrables
 
@@ -493,7 +527,7 @@ CREATE INDEX idx_clicks_at ON clicks(clicked_at);
 
 ---
 
-## Phase 7 — Mise en service V1
+## Phase 7 — Mise en service V1 ⏳ À faire
 
 **Objectif** : premier envoi réel à Chris, monitoring actif 2 semaines.
 

@@ -2,32 +2,143 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## État du projet
+## État du projet (avril 2026)
 
-Repo en amorçage : il ne contient pour l'instant que le PRD, un README, et la config sources (`sources/comptes.json`). Les répertoires `scripts/`, `templates/`, et `output/` annoncés dans le README n'existent pas encore — à créer au premier commit de code. Aucune toolchain Python n'est en place (pas de `pyproject.toml`, `requirements.txt`, ni tests). Le runtime cible est Python 3.11+.
+Pipeline V1 **assemblé et testé hors-ligne**. 4 phases du PLAN mergées sur `main` (PR #2, #3, #4, #6). 104 tests verts (`pytest -q`). Mode live xAI câblé mais **non encore validé contre l'API réelle** — requiert `XAI_API_KEY` côté hermes-agent.
 
-## Architecture cible
+| Phase | Statut | Livrables |
+|---|---|---|
+| 0 — Scaffolding | ✅ PR #2 | `pyproject.toml`, JSON schema, dirs |
+| 1 — Pipeline offline | ✅ PR #3 | `models`, `config`, `window`, `dedup`, `select`, `render`, `build_briefing`, fixture, 30 tests |
+| 2 — Template HTML prod | ✅ PR #4 | `templates/briefing.html` AA + dark/light, macro `_item.html`, 15 tests |
+| 3 — Intégration xAI | ✅ PR #6 | `xai_client`, `sourcing`, 4 prompts versionnés, `docs/xai-integration.md`, 59 tests |
+| 4 — Redirector Tailscale | ⏳ | service FastAPI + SQLite + tracking clics (parallélisable) |
+| 5 — Intégration hermes-agent | ⏳ | contrat stdout JSON figé, fallback NAS, runbook |
+| 6 — Tests étendus | ⏳ | DST edge cases, schema invalid, fixtures additionnelles |
+| 7 — Mise en service V1 | ⏳ | cron, premier envoi, monitoring 2 semaines |
 
-Pipeline quotidien exécuté par **Hermes Agent** (hôte externe à ce repo) via le skill `briefing-matinal`. Ce repo fournit la config + les scripts ; Hermes fournit le cron, les secrets, l'envoi Telegram, et le NAS.
+## Architecture actuelle
 
-Flux : `sources/comptes.json` → `scripts/build-briefing.py` (interroge xAI Grok `x_search` via `/v1/responses` + `web_search` Hermes en parallèle) → rendu via `templates/briefing.html` → fichier HTML standalone dans `output/YYYY-MM-DD.html` → Hermes envoie sur Telegram à 6h45 AM (America/Toronto), fallback NAS `/mnt/nas/commun/briefing-matinal/`.
+```
+briefing-matinal/
+├── PRD.md                          # Spec V2 (source de vérité)
+├── PLAN.md                         # Plan d'impl 7 phases (état d'avancement)
+├── docs/
+│   ├── xai-integration.md          # Référence opérationnelle xAI
+│   └── preview/sample-matin.html   # Snapshot HTML pour visualisation
+├── sources/
+│   ├── comptes.json                # Config runtime (15 comptes, 8 recherches, 6 sections)
+│   └── comptes.schema.json         # JSON Schema draft 2020-12
+├── prompts/                        # Templates Jinja LLM (versionnés via PROMPTS_VERSION)
+│   ├── system.txt
+│   ├── search_accounts.txt
+│   ├── search_theme.txt
+│   └── search_web.txt
+├── scripts/
+│   ├── models.py                   # Item, Briefing dataclasses
+│   ├── config.py                   # load_config + schema validation
+│   ├── window.py                   # Fenêtres matin/soir America/Toronto
+│   ├── dedup.py                    # canonical_url + title hash
+│   ├── select.py                   # quotas par section + 60s + dont_miss
+│   ├── render.py                   # Jinja2 + validation taille/CDN
+│   ├── xai_client.py               # httpx wrapper Responses API + retry
+│   ├── sourcing.py                 # orchestrateur appels xAI
+│   ├── fixture_loader.py           # mode offline (Phase 1)
+│   └── build_briefing.py           # CLI (switch fixture/live)
+├── templates/
+│   ├── briefing.html               # Layout Jinja AA-compliant
+│   └── partials/_item.html         # Macro item réutilisée
+├── tests/                          # 104 tests, 1.9s
+└── output/                         # Briefings générés (gitignored)
+```
 
-Les sections du briefing (AI/Tech, Tesla, SpaceX, Santé, Politique, Business + "En 60 secondes" et "À ne pas manquer") sont **data-driven** depuis `comptes.json` (clé `sections`, avec `max_items` par section). Toute modification de portée (comptes X, thèmes de recherche, sources web) passe par `comptes.json`, pas par le code.
+**Flux exécution** :
+
+`comptes.json` → `build_briefing.py --moment {matin|soir}` → soit `fixture_loader` (offline) soit `sourcing.source_briefing(XAIClient)` (live, appels parallèles `x_search`/`web_search` via Responses API) → filtres engagement + fenêtre → `dedup` → `select` (quotas + 60s + dont_miss) → `render` Jinja → HTML standalone dans `output/YYYY-MM-DD-{matin|soir}.html` + JSON stdout pour hermes-agent.
+
+## Commandes courantes
+
+```bash
+# Setup initial
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,redirector]"
+
+# Tests + lint
+pytest -q                            # 104 tests, 1.9s
+ruff check .                         # All checks passed
+
+# Mode offline (fixture, gratuit)
+python -m scripts.build_briefing --moment matin \
+  --fixture tests/fixtures/sample_matin.json --dry-run
+
+# Mode live (requiert XAI_API_KEY)
+export XAI_API_KEY="xai-..."
+python -m scripts.build_briefing --moment matin --dry-run \
+  2>&1 | jq 'select(.event=="xai_call")'
+
+# Valider la config contre le schema
+python -c "import json, jsonschema; \
+  jsonschema.validate(json.load(open('sources/comptes.json')), \
+                      json.load(open('sources/comptes.schema.json'))); \
+  print('config OK')"
+
+# Régénérer le snapshot preview
+python -m scripts.build_briefing --moment matin \
+  --fixture tests/fixtures/sample_matin.json && \
+  cp output/2026-04-19-matin.html docs/preview/sample-matin.html
+```
+
+## Décisions V1 figées (voir PRD §Décisions V1)
+
+| # | Décision | Valeur |
+|---|---|---|
+| D1 | Cadence | 2x/jour, 6h45 + 17h30 America/Toronto |
+| D2 | Weekends | Identique semaine |
+| D3 | Budget lecture | Triage pur ≤ 5 min |
+| D4 | Politique | 1 section unifiée, 3 items max |
+| D5 | "À ne pas manquer" | Dans les 2 briefings |
+| D6 | Tracking | Short-links via redirector Tailscale (Phase 4) |
+| D7 | Langue | FR-QC structure, bilingue toléré sans traduction |
 
 ## Contraintes dures (non négociables)
 
-- **HTML standalone** : inline CSS uniquement, pas de CDN, pas de JS, pas de Google Fonts — polices système.
-- **Taille max 50 KB** (limite document Telegram).
-- **Mobile-first**, lisible en dark ET light.
-- **Latence < 3 min** pour la génération complète.
-- **Budget** ~0.10-0.15 $/jour (3-5 appels Grok max).
-- **Output gitignored** (`output/`), comme `.env` et `__pycache__/`.
+- **HTML standalone** : CSS inline (`<style>` unique), pas de CDN, pas de JS, polices système.
+- **Budget lisibilité ~50 KB** (réel actuel : 8.1 KB sur fixture pleine — 6× sous budget).
+- **Mobile-first**, contraste AA validé (≥7:1 partout en réalité).
+- **Auto dark/light** via `prefers-color-scheme`.
+- **Latence < 3 min** pour la génération complète (Phase 1 offline tourne en <1s).
+- **Budget xAI** ~0.22-0.30 $/jour (cf. `docs/xai-integration.md`).
+- **Output gitignored** (`output/`), comme `.env`, `*.db`, `.venv/`, caches.
+
+## Stack technique
+
+- **Python 3.11+** (alias `datetime.UTC`, `zoneinfo` stdlib)
+- **httpx** sync pour xAI Responses API
+- **jinja2** StrictUndefined + autoescape
+- **pydantic** pour validation (contrat I/O xAI)
+- **jsonschema** draft 2020-12 pour `comptes.json`
+- **fastapi + uvicorn** (Phase 4, redirector — déjà dans `[redirector]` extras)
+- **pytest + pytest-httpx** pour mocks API
+- **ruff** line-length 110, target py311 (configuré dans `pyproject.toml`)
+- **mypy** strict (configuré, pas encore lancé en CI)
+
+## Conventions
+
+- **Branches** : `claude/<phase-ou-feature>-<slug>` (ex. `claude/phase-3-xai`, `claude/docs-update`)
+- **PRs** : 1 PR par phase, squash-merge sur `main`
+- **Commits atomiques** au sein d'une PR (chore/feat/test/docs scopés)
+- **PROMPTS_VERSION** bumpée manuellement à chaque modification sémantique des prompts (injectée en footer HTML pour traçabilité)
+- **Config hash** SHA-256 de `comptes.json` injecté en footer HTML
+- **TODO(live):** marqueurs aux endroits où la doc xAI accessible ne fige pas la forme exacte — à valider au premier appel réel
 
 ## Non-goals explicites (voir PRD §Non-goals)
 
-Pas de posting X, pas de résumé vidéo YouTube, pas d'analyse de sentiment, pas de dashboard web, pas de multi-utilisateur. Ne pas fusionner avec le skill `bst-veille-hebdo` (veille pro, séparée).
+Pas de posting X, pas de résumé vidéo YouTube, pas d'analyse de sentiment, pas de dashboard web, pas de multi-utilisateur, pas de scraping HTML direct, pas d'alertes breaking news hors cycle (v2+), pas de traduction automatique. Ne pas fusionner avec le skill `bst-veille-hebdo`.
 
 ## Références
 
-- **PRD.md** — source de vérité pour les specs fonctionnelles (S1–S5), les contraintes techniques, et les critères de succès.
-- **sources/comptes.json** — config runtime (15 comptes X, 8 recherches thématiques, 3 sources web, 6 sections).
+- **PRD.md** — spec fonctionnelle V2, log des décisions V1, modes d'erreur, data model
+- **PLAN.md** — découpage 7 phases avec acceptance criteria
+- **docs/xai-integration.md** — référence opérationnelle xAI (endpoint, schema, retry, cost)
+- **sources/comptes.json** + **comptes.schema.json** — config runtime + validation
+- **docs/preview/sample-matin.html** — snapshot HTML rendu (visualisation via `htmlpreview.github.io`)
