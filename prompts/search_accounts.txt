@@ -1,0 +1,40 @@
+# Task: search X accounts within window
+
+Use the `x_search` tool to fetch posts from the X accounts listed below, within the time window:
+- **From** (UTC, inclusive): {{ window_start_iso }}
+- **To**   (UTC, inclusive): {{ window_end_iso }}
+
+# Accounts to search ({{ handles | length }} total, all in `allowed_x_handles`)
+{% for h in handles %}- {{ h }}
+{% endfor %}
+
+# Engagement filter (apply BEFORE selecting items to summarize)
+- Likes ≥ {{ engagement_min.likes }} **OR** reposts ≥ {{ engagement_min.reposts }}
+- Exclude replies (`in_reply_to_*` non-null)
+- Exclude pure retweets (prefer original if available)
+
+# Section assignment (REQUIRED for each item)
+Each item MUST have a `section_id` from this exact list (kebab-case):
+{% for sid in section_ids %}- `{{ sid }}`
+{% endfor %}
+
+Mapping hint by topic:
+- AI/LLM/agentic → `ai-tech`
+- Tesla, FSD, Optimus, Cybertruck → `tesla`
+- SpaceX, Starship, Starlink → `spacex`
+- Longevity, fasting, NMN, hormones → `sante`
+- Quebec/Canada/US/International politics → `politique`
+- Markets, M&A, Quebec economy → `business`
+
+If an item touches multiple, pick the most specific.
+
+# Score (0.0-1.0)
+- 0.9-1.0: major announcement, primary source, high relevance to Christian's interests
+- 0.7-0.9: solid signal, useful update
+- 0.5-0.7: borderline, include only if section quota not yet met
+- < 0.5: skip
+
+# Quantity
+Return up to {{ max_items_total }} items total across all sections. Quality > quantity. Return fewer if appropriate.
+
+Return JSON only.

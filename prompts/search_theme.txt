@@ -1,0 +1,27 @@
+# Task: thematic X search within window
+
+Use the `x_search` tool with the query below to find relevant posts within the time window:
+- **From** (UTC): {{ window_start_iso }}
+- **To**   (UTC): {{ window_end_iso }}
+
+# Search query
+**Theme**: {{ theme }}
+**Query** (free-form, you may refine if helpful): `{{ query }}`
+
+# Engagement filter
+- Likes ≥ {{ engagement_min.likes }} **OR** reposts ≥ {{ engagement_min.reposts }}
+- Exclude replies, pure retweets, low-engagement noise
+
+# Section assignment
+Each returned item MUST have `section_id = "{{ section_id }}"` — this thematic search is dedicated to that section.
+
+# Source diversity
+Avoid returning multiple posts from the same author about the same event. If a major event has 5 reposts/quotes, return ONE (the most authoritative source) and let the caller dedupe.
+
+# Score (0.0-1.0)
+Same scale as `search_accounts`. Calibrate down vs account-curated content (anonymous accounts are usually less authoritative).
+
+# Quantity
+Return up to {{ max_items }} items. Quality > quantity.
+
+Return JSON only.
