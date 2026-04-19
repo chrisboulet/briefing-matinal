@@ -196,27 +196,34 @@ Chaque briefing est archivé en deux endroits :
 
 **Ajout d'une nouvelle section** : seulement éditer `sections` + (optionnellement) ajouter des `recherches_thematiques` pointant dessus. Aucun code à toucher si la section suit le pattern standard. Le template Jinja2 itère dynamiquement sur la config.
 
-### S6 — Tracking clics & short-links
+### S6 — Tracking clics & short-links (via Tailscale)
 
-Tous les liens du briefing passent par un **redirector minimal** hébergé sur la même machine Hermes.
+Tous les liens du briefing passent par un **redirector minimal** qui tourne sur la machine hermes-agent et est **exposé uniquement sur le tailnet Chris** (Tailscale). Aucun VPS, aucun port ouvert sur internet public, aucun tunnel Cloudflare nécessaire.
 
 **Architecture** :
-- Service HTTP léger (FastAPI ou équivalent) sur port interne, reverse-proxy via nginx Hermes
+- Service FastAPI (ou équivalent Python léger) sur la machine hermes-agent, bindé sur l'IP Tailscale de la machine (`tailscale0`)
+- Hostname via MagicDNS : `hermes.<tailnet-name>.ts.net` avec **HTTPS** (certs Tailscale auto-provisionnés — éviter http:// qui fait flagguer Telegram/iOS)
 - Route : `GET /b/:short_id` → `302 Redirect` vers l'URL cible
-- Storage : SQLite (`briefing_tracker.db`) — tables `short_links`, `clicks`
+- Storage : SQLite (`~/briefing_tracker.db`) — tables `short_links`, `clicks`
+- Accessibilité : seuls les devices sur le tailnet de Chris (téléphone, laptop) résolvent le hostname et suivent les redirects
 
 **Génération** :
 - Au moment du rendu, chaque URL unique reçoit un `short_id` de 8 chars (base62, dérivé du SHA-256 de l'URL pour idempotence)
 - Le script insère/UPSERT dans `short_links` avec : `short_id`, `target_url`, `briefing_id`, `section_id`, `item_title`, `created_at`
-- Le HTML utilise `https://[hermes-domain]/b/:short_id`
+- Le HTML utilise `https://hermes.<tailnet>.ts.net/b/:short_id`
 
 **Log des clics** :
-- Chaque hit enregistre : `short_id`, `clicked_at`, `user_agent`, IP (tronquée à /24 pour respect vie privée)
-- Pas de cookies, pas de fingerprinting — Chris est seul utilisateur attendu
+- Chaque hit enregistre : `short_id`, `clicked_at`, `user_agent`
+- Pas besoin de logger IP (tout vient du tailnet privé de Chris — un seul utilisateur de toute façon)
+- Pas de cookies, pas de fingerprinting
+
+**Edge case — Tailscale déconnecté** : si Chris clique depuis un device hors tailnet (avion, VPN corpo qui override), le hostname ne résout pas → lien mort. Impact : clic perdu + frustration. Atténuation V1 : accepter (cas rare). V1.5 éventuelle : encoder l'URL cible en base64 dans le path (`/b/:short_id/:b64_fallback`) pour qu'un bookmark local puisse recover même offline.
+
+**Effet de bord désirable** : Telegram tente l'unfurl des URLs depuis **ses serveurs** (pas depuis ton téléphone). Les hostnames `*.ts.net` privés ne résolvent pas côté Telegram → **pas de preview générée**, briefing visuellement plus propre, zéro requête parasite dans les logs de tracking.
 
 **Rétention clics** : 12 mois glissants, purge mensuelle.
 
-**Exposition de la métrique** : un petit endpoint `/stats?from=YYYY-MM-DD&to=YYYY-MM-DD` retourne JSON pour alimenter un futur dashboard ou la PRD v3 ("apprentissage des clics").
+**Exposition de la métrique** : endpoint `/stats?from=YYYY-MM-DD&to=YYYY-MM-DD` (toujours sur tailnet) qui retourne JSON pour alimenter un futur dashboard ou la PRD v3 ("apprentissage des clics").
 
 ### Data model
 
