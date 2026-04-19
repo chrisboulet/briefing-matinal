@@ -2,3 +2,11 @@ output/
 *.pyc
 __pycache__/
 .env
+.venv/
+*.db
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
