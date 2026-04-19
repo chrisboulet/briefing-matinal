@@ -183,10 +183,13 @@ def test_usage_falls_back_to_num_tool_calls(
 def test_usage_falls_back_to_counting_tool_call_entries(
     client: XAIClient, httpx_mock: HTTPXMock
 ) -> None:
+    """Counts all 4 recognized tool-call entry types (custom_tool_call is the
+    actual type emitted by xAI per issue #15)."""
     inner = json.dumps({"items": [], "warnings": []})
     payload = {
         "model": "grok",
         "output": [
+            {"type": "custom_tool_call", "name": "x_keyword_search"},
             {"type": "tool_call", "name": "x_search"},
             {"type": "tool_use", "name": "x_search"},
             {"type": "function_call", "name": "x_search"},
@@ -196,7 +199,7 @@ def test_usage_falls_back_to_counting_tool_call_entries(
     }
     httpx_mock.add_response(url=XAI_URL, json=payload)
     resp = client.call("s", "u", tool="x_search")
-    assert resp.usage.tool_calls == 3
+    assert resp.usage.tool_calls == 4
 
 
 def test_cost_calculation_matches_constants() -> None:
@@ -260,7 +263,50 @@ def test_200_malformed_json_persists_raises_invalid_response(
 def test_200_valid_json_missing_items_key_raises_invalid(
     client: XAIClient, httpx_mock: HTTPXMock
 ) -> None:
-    inner = json.dumps({"foo": "bar"})  # missing items + warnings
+    inner = json.dumps({"foo": "bar"})  # missing items key → fatal
+    payload = {
+        "model": "grok",
+        "output_text": inner,
+        "usage": {"input_tokens": 0, "output_tokens": 0, "tool_calls": 0},
+    }
+    httpx_mock.add_response(url=XAI_URL, json=payload)
+    httpx_mock.add_response(url=XAI_URL, json=payload)
+
+    with pytest.raises(XAIInvalidResponse):
+        client.call("s", "u", tool="x_search")
+
+
+def test_200_bare_array_output_wraps_as_items(
+    client: XAIClient, httpx_mock: HTTPXMock
+) -> None:
+    """Issue #15: xAI Responses API may return a bare JSON array instead of
+    the documented {items, warnings} dict. Client must wrap it defensively."""
+    items = [
+        {
+            "title": "Sample", "summary": "s", "canonical_url": "https://x.com/a",
+            "source_type": "x_account", "source_handle": "@a",
+            "published_at": "2026-04-19T03:00:00Z", "score": 0.9,
+            "section_id": "ai-tech", "likes": 100, "reposts": 10,
+        }
+    ]
+    inner = json.dumps(items)  # bare array, not {"items": ..., "warnings": ...}
+    payload = {
+        "model": "grok",
+        "output_text": inner,
+        "usage": {"input_tokens": 50, "output_tokens": 20, "tool_calls": 1},
+    }
+    httpx_mock.add_response(url=XAI_URL, json=payload)
+
+    resp = client.call("s", "u", tool="x_search")
+    assert resp.parsed_output["items"] == items
+    assert resp.parsed_output["warnings"] == []
+
+
+def test_200_primitive_output_raises_invalid(
+    client: XAIClient, httpx_mock: HTTPXMock
+) -> None:
+    """Output that is neither list nor dict (e.g., a bare string) is pathological."""
+    inner = json.dumps("unexpected string output")
     payload = {
         "model": "grok",
         "output_text": inner,
