@@ -28,7 +28,7 @@ from typing import Any, Literal
 import httpx
 
 XAI_BASE_URL = "https://api.x.ai/v1"
-DEFAULT_MODEL = "grok-4-1-fast-latest"
+DEFAULT_MODEL = "grok-4-1-fast-non-reasoning"
 DEFAULT_TIMEOUT_S = 30.0
 DEFAULT_MAX_RETRIES = 2  # = 3 essais total
 

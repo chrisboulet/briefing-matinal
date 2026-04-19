@@ -305,7 +305,7 @@ Dans `render.py`, après rendu Jinja, vérifier :
 
 ```python
 class XAIClient:
-    def __init__(self, api_key: str, model: str = "grok-4-1-fast-latest"):
+    def __init__(self, api_key: str, model: str = "grok-4-1-fast-non-reasoning"):
         ...
 
     def x_search(
@@ -554,7 +554,7 @@ CREATE INDEX idx_clicks_at ON clicks(clicked_at);
 
 ### Décisions à prendre en fin de période 2 semaines
 
-- Rester sur `grok-4-1-fast-latest` ou escalader vers `grok-4.20-latest` ?
+- Rester sur `grok-4-1-fast-non-reasoning` ou escalader (1) `-reasoning` variant, (2) `grok-4.20-0309-reasoning` ?
 - Ajuster `max_items` par section selon feedback Chris ?
 - Ajouter/retirer des comptes ou thèmes ?
 - Passer à la V1.5 (features type breaking news, fallback b64) ?
