@@ -74,10 +74,10 @@ Toute modification du modèle doit :
 
 **Contraintes connues** (sources : `docs.x.ai`, blog xAI, GitHub openclaw/openclaw#26355) :
 
-- `allowed_x_handles` : **max 10 handles par appel** → les 15 comptes du PRD sont splittés en 2 appels (gérés par `sourcing.py`)
+- `allowed_x_handles` : **max 10 handles par appel** → les comptes X sont splittés en batches (géré par `sourcing.py` via `_chunk` + `MAX_HANDLES_PER_CALL`)
 - `allowed_x_handles` est mutuellement exclusif avec `excluded_x_handles`
+- `web_search.allowed_domains` : **max 5 domaines par appel** (issue #31, confirmé live avec 400 "A maximum of 5 domains can be allowed") → splitté en batches via `MAX_DOMAINS_PER_CALL`
 - Live Search API (legacy `search_parameters` sur `/chat/completions`) est **dépréciée 2026-01-12** (410 Gone) — on n'utilise QUE la Responses API
-- Le tool `web_search` accepte un `allowed_domains` (à confirmer en runtime)
 
 ## Forme de la réponse
 
