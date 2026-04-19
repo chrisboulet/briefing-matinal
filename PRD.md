@@ -37,7 +37,7 @@ Décisions prises lors de la révision du PRD ; elles cadrent la V1 et ne sont p
 | D3 | Budget lecture | **Triage pur ≤ 5 min** — deep-dives en queue |
 | D4 | Sections politique | **1 section unifiée**, 3 items max |
 | D5 | "À ne pas manquer" | **Dans les deux briefings** (1 item chacun) |
-| D6 | Tracking | **Short-links + log de clics** (redirector dédié) |
+| D6 | Tracking | ❌ **Aucun tracking V1** (voir [issue #13](https://github.com/chrisboulet/briefing-matinal/issues/13)). Peut être repris si N>1. |
 | D7 | Langue | **FR-QC structurel**, bilingue toléré sans traduction |
 
 ## Spécifications fonctionnelles
@@ -116,7 +116,7 @@ Le briefing est un fichier HTML standalone rendu par **Jinja2** (décision : pas
 **Volume cible** : ~13-15 items par briefing = ~3-4 min de scan en triage pur. Le matin tend à être légèrement plus court (nuit plus calme), le soir plus dense — c'est naturel, pas besoin de forcer.
 
 **Chaque item** :
-- Titre (cliquable via short-link, cf. S6) — **langue d'origine préservée**
+- Titre cliquable (URL canonique ; tracking via short-link skippé V1, cf. §S6) — **langue d'origine préservée**
 - 1-2 lignes de contexte en **français québécois**, style télégraphique
 - Emoji de catégorie en préfixe
 - Source indiquée en suffixe (ex : `via @cernbasher` ou `via JDQ`)
@@ -196,34 +196,16 @@ Chaque briefing est archivé en deux endroits :
 
 **Ajout d'une nouvelle section** : seulement éditer `sections` + (optionnellement) ajouter des `recherches_thematiques` pointant dessus. Aucun code à toucher si la section suit le pattern standard. Le template Jinja2 itère dynamiquement sur la config.
 
-### S6 — Tracking clics & short-links (via Tailscale)
+### S6 — Tracking (skipped V1)
 
-Tous les liens du briefing passent par un **redirector minimal** qui tourne sur la machine hermes-agent et est **exposé uniquement sur le tailnet Chris** (Tailscale). Aucun VPS, aucun port ouvert sur internet public, aucun tunnel Cloudflare nécessaire.
+❌ **Skipped** via [issue #13](https://github.com/chrisboulet/briefing-matinal/issues/13) — briefing = N=1 lecteur, le coût infra (FastAPI + SQLite + cert Tailscale + systemd + purge) n'est pas justifié pour compter les clics d'un seul utilisateur. Les liens du briefing restent en **URLs canoniques brutes**.
 
-**Architecture** :
-- Service FastAPI (ou équivalent Python léger) sur la machine hermes-agent, bindé sur l'IP Tailscale de la machine (`tailscale0`)
-- Hostname via MagicDNS : `hermes.<tailnet-name>.ts.net` avec **HTTPS** (certs Tailscale auto-provisionnés — éviter http:// qui fait flagguer Telegram/iOS)
-- Route : `GET /b/:short_id` → `302 Redirect` vers l'URL cible
-- Storage : SQLite (`~/briefing_tracker.db`) — tables `short_links`, `clicks`
-- Accessibilité : seuls les devices sur le tailnet de Chris (téléphone, laptop) résolvent le hostname et suivent les redirects
+Hooks conservés pour éventuelle reprise si N > 1 :
+- Champ `short_url: str = ""` dans `Item` (data model)
+- Template `{{ item.short_url or item.canonical_url }}` (graceful fallback — aujourd'hui tombe toujours sur `canonical_url`)
+- Extra `[redirector]` dormant dans `pyproject.toml` (`fastapi`, `uvicorn[standard]`)
 
-**Génération** :
-- Au moment du rendu, chaque URL unique reçoit un `short_id` de 8 chars (base62, dérivé du SHA-256 de l'URL pour idempotence)
-- Le script insère/UPSERT dans `short_links` avec : `short_id`, `target_url`, `briefing_id`, `section_id`, `item_title`, `created_at`
-- Le HTML utilise `https://hermes.<tailnet>.ts.net/b/:short_id`
-
-**Log des clics** :
-- Chaque hit enregistre : `short_id`, `clicked_at`, `user_agent`
-- Pas besoin de logger IP (tout vient du tailnet privé de Chris — un seul utilisateur de toute façon)
-- Pas de cookies, pas de fingerprinting
-
-**Edge case — Tailscale déconnecté** : si Chris clique depuis un device hors tailnet (avion, VPN corpo qui override), le hostname ne résout pas → lien mort. Impact : clic perdu + frustration. Atténuation V1 : accepter (cas rare). V1.5 éventuelle : encoder l'URL cible en base64 dans le path (`/b/:short_id/:b64_fallback`) pour qu'un bookmark local puisse recover même offline.
-
-**Effet de bord désirable** : Telegram tente l'unfurl des URLs depuis **ses serveurs** (pas depuis ton téléphone). Les hostnames `*.ts.net` privés ne résolvent pas côté Telegram → **pas de preview générée**, briefing visuellement plus propre, zéro requête parasite dans les logs de tracking.
-
-**Rétention clics** : 12 mois glissants, purge mensuelle.
-
-**Exposition de la métrique** : endpoint `/stats?from=YYYY-MM-DD&to=YYYY-MM-DD` (toujours sur tailnet) qui retourne JSON pour alimenter un futur dashboard ou la PRD v3 ("apprentissage des clics").
+Substitution mesure d'engagement V1 : self-report hebdo de Chris (cf. §Succès mesurable).
 
 ### Data model
 
@@ -236,7 +218,7 @@ class Item:
     title: str                 # Langue d'origine préservée
     summary: str               # 1-2 lignes FR-QC générées par LLM
     canonical_url: str         # URL dédupliquée
-    short_url: str             # URL via redirector (rempli au rendu)
+    short_url: str             # Toujours "" en V1 (tracking skippé #13) ; hook conservé
     section_id: str            # Clé FK vers sections[].id
     source_type: str           # "x_account" | "x_search" | "web"
     source_handle: str         # "@cernbasher" | "Tesla (search)" | "journaldequebec.com"
@@ -278,7 +260,6 @@ Matrice de comportement face aux pannes externes. Aucune panne ne doit laisser C
 | Telegram 4xx/5xx | send_document ≠ 200 | 1 retry à 5s, puis fallback NAS + notif Hermes |
 | NAS indisponible | mount/write fail | Log d'erreur, ne bloque pas Telegram. Si Telegram aussi down : exit `3`, Hermes envoie le HTML inline par email |
 | Aucun item après filtrage | items_count == 0 global | Briefing minimal avec message "Journée calme — rien de marquant dans la fenêtre. Prochain briefing [HH:MM]." |
-| Redirector down au rendu | HTTP fail sur healthcheck | Fallback : liens directs sans short-link (tracking perdu pour ce briefing, note en pied) |
 
 **Observabilité** :
 - Logs structurés JSON sur stdout → captés par systemd/journald côté Hermes
@@ -288,8 +269,8 @@ Matrice de comportement face aux pannes externes. Aucune panne ne doit laisser C
 ## Dev/prod & testing
 
 **Séparation des environnements** via variable d'env `BRIEFING_ENV` :
-- `production` — envoi au chat Telegram de Chris, écrit sur NAS, log redirector en SQLite prod
-- `staging` — envoi à un chat Telegram de test (groupe dédié), écrit sur `output/staging/`, SQLite staging
+- `production` — envoi au chat Telegram de Chris, écrit sur NAS
+- `staging` — envoi à un chat Telegram de test (groupe dédié), écrit sur `output/staging/`
 - `dry-run` — ne poste rien, génère le HTML, print le JSON de sortie, quitte
 
 **Flag CLI** :
@@ -340,15 +321,14 @@ python scripts/build-briefing.py --moment matin --fixture tests/fixtures/2026-04
 | Métrique | Cible V1 | Mesure |
 |---|---|---|
 | Briefings livrés à l'heure | ≥ 95 % (2 retards max/mois × 2 briefings) | Log Hermes |
-| Clics par briefing (moyenne) | ≥ 1 | SQLite redirector |
-| Items cliqués / total items | ≥ 5 % | SQLite redirector |
+| Items ouverts par briefing (self-report) | ≥ 1 | Conversation hebdo (tracking skippé V1 #13) |
 | Chris arrête de scroll X matin | Self-report hebdo | Conversation |
 | Liste d'ajustements après 2 sem | < 5 items | Fichier `FEEDBACK.md` |
 | Coût mensuel | < 12 $ | Log xAI |
 
 ## Évolution future (v2+)
 
-- **Scoring personnalisé** basé sur historique de clics (le tracking V1 alimente ça)
+- **Scoring personnalisé** basé sur feedback Telegram (réactions emoji ou réponses texte — requiert infra côté hermes-agent ; le tracking direct a été skippé en V1, voir issue #13)
 - **Alertes breaking news** hors cycle (seuil : > 3 comptes surveillés postent sur le même sujet en < 30 min)
 - **Intégration veille pro BST** (sourcing partagé, pas de fusion)
 - **Récap hebdo dimanche soir** compilé à partir des 14 briefings de la semaine
