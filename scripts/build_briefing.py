@@ -9,7 +9,7 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from scripts.config import ConfigError, config_hash, load_config
 from scripts.dedup import dedupe
@@ -24,9 +24,17 @@ from scripts.select import (
 from scripts.window import briefing_id as compute_briefing_id
 from scripts.window import compute_window
 
+if TYPE_CHECKING:
+    from scripts.xai_client import XAIClient
+
 # Bumper en cas de modification sémantique des prompts dans prompts/.
 # Le hash est injecté en footer du HTML rendu (traçabilité audit).
-PROMPTS_VERSION = "prompts-v1.0"
+# v1.1 : ajout de prompts/enrich.txt (2e passe — issue #25).
+PROMPTS_VERSION = "prompts-v1.1"
+
+# Kill switch pour l'enrichissement 2e passe (issue #25).
+# Exporter `BRIEFING_ENRICH=0` pour désactiver. Défaut "1" = actif en mode live.
+_ENRICH_ENV_VAR = "BRIEFING_ENRICH"
 
 
 def _git_commit() -> str:
@@ -62,16 +70,14 @@ def _source_via_fixtures(
     return all_items, [], fixture_meta
 
 
-def _source_via_xai(
-    config: dict,
-    window_start: datetime,
-    window_end: datetime,
-) -> tuple[list[Item], list[str]]:
+def _make_xai_client() -> XAIClient:
     """
-    Charge des items via xAI Responses API (mode live, Phase 3).
-    Lazy import pour éviter dépendance httpx en mode fixture pur.
+    Instancie un `XAIClient` depuis l'env. Lazy import pour éviter la
+    dépendance httpx en mode fixture pur.
+
+    Le caller est responsable du `with client:` (context manager).
+    Lève `ConfigError` si `XAI_API_KEY` manque.
     """
-    from scripts.sourcing import source_briefing
     from scripts.xai_client import XAIClient
 
     api_key = os.environ.get("XAI_API_KEY")
@@ -84,8 +90,24 @@ def _source_via_xai(
     model = os.environ.get("XAI_MODEL", "grok-4-1-fast-non-reasoning")
     timeout_s = float(os.environ.get("XAI_TIMEOUT_S", "30"))
 
-    with XAIClient(api_key=api_key, model=model, timeout_s=timeout_s) as client:
-        result = source_briefing(client, config, window_start, window_end)
+    return XAIClient(api_key=api_key, model=model, timeout_s=timeout_s)
+
+
+def _source_via_xai(
+    client: XAIClient,
+    config: dict,
+    window_start: datetime,
+    window_end: datetime,
+) -> tuple[list[Item], list[str]]:
+    """
+    Charge des items via xAI Responses API (mode live, Phase 3).
+
+    Le `client` est passé par le caller (qui gère le context manager) pour
+    qu'il puisse être réutilisé par l'enrichissement 2e passe (issue #25).
+    """
+    from scripts.sourcing import source_briefing
+
+    result = source_briefing(client, config, window_start, window_end)
 
     sys.stderr.write(json.dumps({
         "event": "sourcing_total",
@@ -98,6 +120,30 @@ def _source_via_xai(
     }) + "\n")
 
     return result.items, result.warnings
+
+
+def _enrich_live(
+    client: XAIClient,
+    sections: dict[str, list[Item]],
+    dont_miss: Item | None,
+) -> tuple[dict[str, list[Item]], Item | None, list[str]]:
+    """
+    Appelle l'enrichissement 2e passe (issue #25).
+
+    Skippé silencieusement si `BRIEFING_ENRICH=0`. Retourne les sections
+    et `dont_miss` potentiellement enrichis, plus la liste des warnings.
+    """
+    if os.environ.get(_ENRICH_ENV_VAR, "1") == "0":
+        sys.stderr.write(json.dumps({
+            "event": "enrichment_skipped",
+            "reason": f"{_ENRICH_ENV_VAR}=0",
+        }) + "\n")
+        return sections, dont_miss, []
+
+    from scripts.enrichment import enrich_selected
+
+    result = enrich_selected(client, sections, dont_miss)
+    return result.sections, result.dont_miss, result.warnings
 
 
 def build(
@@ -113,28 +159,53 @@ def build(
     cfg_hash = config_hash(config_path)
 
     fixture_meta: dict | None = None
+    source_warnings: list[str]
+    enrich_warnings: list[str] = []
+
     if fixtures:
-        # Mode offline (Phase 1) — fixtures fournies
+        # Mode offline (Phase 1) — fixtures fournies, pas d'enrichissement
+        # (pas de vrai client xAI disponible).
         all_items, source_warnings, fixture_meta = _source_via_fixtures(fixtures)
+
+        now = _parse_now(now_override, fixture_meta)
+        window_start, window_end = compute_window(moment, now)  # type: ignore[arg-type]
+        bid = compute_briefing_id(moment, now)  # type: ignore[arg-type]
+
+        filtered = apply_engagement_filter(all_items, config["engagement_min"])
+        filtered = [it for it in filtered if window_start <= it.published_at <= window_end]
+        deduped = dedupe(filtered)
+
+        sections = select_by_section(deduped, sections_cfg)
+        dont_miss = select_dont_miss(deduped, sections)
     else:
-        # Mode live (Phase 3) — appels xAI réels
-        # On a besoin de la fenêtre AVANT le sourcing
+        # Mode live (Phase 3+Issue #25) — sourcing + enrichissement 2e passe,
+        # tous deux sous le même `XAIClient` (1 httpx.Client réutilisé).
         now_for_window = _parse_now(now_override, None)
         window_start_pre, window_end_pre = compute_window(moment, now_for_window)  # type: ignore[arg-type]
-        all_items, source_warnings = _source_via_xai(config, window_start_pre, window_end_pre)
 
-    now = _parse_now(now_override, fixture_meta)
-    window_start, window_end = compute_window(moment, now)  # type: ignore[arg-type]
-    bid = compute_briefing_id(moment, now)  # type: ignore[arg-type]
+        with _make_xai_client() as client:
+            all_items, source_warnings = _source_via_xai(
+                client, config, window_start_pre, window_end_pre,
+            )
 
-    filtered = apply_engagement_filter(all_items, config["engagement_min"])
-    filtered = [it for it in filtered if window_start <= it.published_at <= window_end]
-    deduped = dedupe(filtered)
+            now = _parse_now(now_override, None)
+            window_start, window_end = compute_window(moment, now)  # type: ignore[arg-type]
+            bid = compute_briefing_id(moment, now)  # type: ignore[arg-type]
 
-    sections = select_by_section(deduped, sections_cfg)
-    dont_miss = select_dont_miss(deduped, sections)
+            filtered = apply_engagement_filter(all_items, config["engagement_min"])
+            filtered = [it for it in filtered if window_start <= it.published_at <= window_end]
+            deduped = dedupe(filtered)
 
-    warnings: list[str] = list(source_warnings)
+            sections = select_by_section(deduped, sections_cfg)
+            dont_miss = select_dont_miss(deduped, sections)
+
+            # Enrichissement 2e passe (issue #25) : hooké ICI, après sélection,
+            # avant la construction du Briefing. Kill switch via BRIEFING_ENRICH=0.
+            sections, dont_miss, enrich_warnings = _enrich_live(
+                client, sections, dont_miss,
+            )
+
+    warnings: list[str] = list(source_warnings) + list(enrich_warnings)
     for sec in sections_cfg:
         if not sections.get(sec["id"]):
             warnings.append(f"section '{sec['id']}' vide")

@@ -209,9 +209,101 @@ Marqués `# TODO(live):` dans le code. Liste à jour :
 4. Headers de rate limit (`X-RateLimit-*` ou autre) — pas encore observés.
 5. Shape des items retournés par le LLM : est-ce que les champs `title/summary/canonical_url/section_id/...` sont respectés, ou est-ce que le modèle renvoie sa propre shape (`post_id/author/content/...`) malgré le schema strict ? — à surveiller sur le prochain test live, peut nécessiter un adaptateur dans `sourcing._to_item()`.
 
+## Enrichissement 2e passe (issue #25)
+
+Depuis `prompts-v1.1`, le pipeline exécute un **2e appel xAI par item sélectionné** pour produire un résumé substantiel (700-900 chars FR-QC) à partir du contenu web complet. Implémenté dans `scripts/enrichment.py` et hooké dans `scripts/build_briefing.build()` **après** `select_by_section` + `select_dont_miss`, **avant** la construction du `Briefing`.
+
+### Pourquoi
+
+La 1re passe (`source_briefing`) produit des `summary` courts à partir du `content` du post X (~150-300 chars, issue #23 les porte à 700-900 mais ce budget n'est atteignable que sur les sources web). Pour les items web, un 2e appel `web_search` restreint au domaine de l'URL permet d'extraire le body complet et de synthétiser un résumé journalistique complet au même budget.
+
+### Hook point
+
+```
+build()
+  ├── source_briefing()             ← 1re passe (multi-items via x_search/web_search)
+  ├── dedupe + select_by_section    ← ~15-20 items survivants
+  ├── select_dont_miss
+  ├── enrich_selected()             ← 2e passe (web_search par item)  ← ICI
+  └── Briefing(sections, dont_miss, …)
+```
+
+Les deux passes partagent le MÊME `XAIClient` (1 `httpx.Client` réutilisé) pour économiser les handshakes TLS.
+
+### Kill switch
+
+Exporter **`BRIEFING_ENRICH=0`** pour désactiver l'enrichissement sans toucher au code. Utile pour :
+- Dégrader d'urgence si le budget xAI explose ;
+- Régénérer un briefing rapidement en mode "à l'os" (1re passe seule) ;
+- Tester les deux modes en parallèle.
+
+Défaut : `BRIEFING_ENRICH=1` (actif). Ignoré en mode `--fixture` (pas de vrai client xAI disponible).
+
+### Budget
+
+| Métrique | Valeur |
+|---|---|
+| Appels additionnels | 1 par item enrichi (items X/Twitter skippés — redondants avec 1re passe) |
+| Items typiques par briefing | ~10-15 (après dedup + quotas) dont ~5-8 web à enrichir |
+| Tool fees | ~5-8 × 0.005 $ ≈ **+0.03-0.04 $/briefing** |
+| Tokens (estim.) | ~2K input + ~1K output par item × 7 ≈ 14K in / 7K out ≈ **+0.007 $/briefing** |
+| Latence | Parallélisé via `ThreadPoolExecutor(max_workers=4)`, deadline globale **30s** (`GLOBAL_DEADLINE_S`), per-item 20s (`DEFAULT_PER_ITEM_TIMEOUT_S`) |
+| **Total delta** | **~+0.05-0.10 $/briefing**, **+30s** latence max |
+
+Budget global révisé avec enrichissement actif : ~**0.15-0.25 $ par briefing × 2/jour ≈ 0.30-0.50 $/jour ≈ 9-15 $/mois**.
+
+### Schema override pattern
+
+L'enrichissement utilise une shape de réponse **single-item** (`{summary, warnings}`), différente du multi-items `{items: [...], warnings: [...]}` du sourcing. Pour permettre ça, `XAIClient.call()` accepte depuis issue #25 deux paramètres optionnels :
+
+```python
+client.call(
+    system_prompt="",              # system inline dans enrich.txt
+    user_prompt=user_prompt,
+    tool="web_search",
+    tool_params={"allowed_domains": [hostname]},
+    prompt_label=f"enrich_{item.id[:8]}",
+    response_schema=ENRICH_SCHEMA, # override json_schema.schema
+    schema_name="enrich_item",     # override json_schema.name
+)
+```
+
+Comportement :
+- `response_schema=None` (défaut) → utilise `ITEMS_SCHEMA`, `_parse_response` exige la clé `items` (compat stricte Phase 3).
+- `response_schema` fourni → utilise le schema custom, `_parse_response` **n'exige PAS** la clé `items` (le caller inspecte `parsed_output` selon sa propre shape). La normalisation `warnings → list[str]` reste appliquée à toutes les shapes.
+
+Voir `scripts/enrichment.py:_ENRICH_RESPONSE_SCHEMA` pour le détail.
+
+### Skip rules
+
+- **Silencieux (pas de warning)** : items hébergés sur `x.com` ou `twitter.com` (tuple `ENRICH_X_HOSTS`) — la 1re passe a déjà produit un résumé à partir du `content` natif du post, un 2e appel serait redondant et la plupart du temps bloqué par x.com.
+- **Avec warning** : items avec `canonical_url` vide ou sans hostname parseable.
+
+### Dégradation gracieuse
+
+Un échec per-item n'interrompt JAMAIS l'enrichissement global :
+- `XAIError` (auth, rate limit, 5xx persistant, JSON invalide) → warning + item d'origine conservé ;
+- Timeout per-item (`future.result(timeout=20s)`) → warning + original ;
+- Deadline globale wall-clock dépassée (30s) → futures restants cancellés, originaux conservés avec warning ;
+- Summary vide / whitespace → warning + original.
+
+Les warnings sont agrégés dans `Briefing.warnings` (mais pas rendus dans le HTML — voir issue #20).
+
+### Logs structurés
+
+Chaque item enrichi émet une ligne JSON sur stderr, et un `enrichment_total` récapitulatif :
+
+```json
+{"event":"enrichment_call","prompt":"enrich_ab12cd34","status":"ok","item_id":"ab12cd34ef56","host":"lapresse.ca","summary_len":847,"tokens_in":1923,"tokens_out":412,"tool_calls":1,"cost_usd":0.0058,"duration_ms":4213}
+{"event":"enrichment_total","enriched_count":6,"skipped_count":4,"failed_count":1,"warnings_count":1,"tokens_in":11532,"tokens_out":2418,"tool_calls":6,"cost_usd":0.0335}
+```
+
+Captable via `python ... 2>&1 | jq 'select(.event | startswith("enrichment"))'`.
+
 ## Références
 
 - PRD §S1 (Sourcing), §S1.bis (Prompts), §Modes d'erreur, §Contraintes techniques
 - PLAN Phase 3
+- Issue #25 — Enrichissement 2e passe
 - Doc xAI : https://docs.x.ai/overview
 - Issue OpenClaw confirmant dépréciation Live Search : https://github.com/openclaw/openclaw/issues/26355
