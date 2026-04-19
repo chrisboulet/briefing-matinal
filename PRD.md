@@ -48,9 +48,9 @@ Le pipeline interroge 3 types de sources en parallèle pour chaque briefing :
 
 | Source | Méthode | Données |
 |---|---|---|
-| Comptes X surveillés | xAI Grok `x_search` | Posts des comptes de la liste dans la fenêtre |
-| Recherche X thématique | xAI Grok `x_search` | Requêtes thématiques (Tesla, SpaceX, santé, etc.) |
-| Web | `web_search` (Hermes) | Journaux QC + recherches actualité |
+| Comptes X surveillés | xAI Responses API, tool `x_search` avec `allowed_x_handles` | Posts des comptes de la liste dans la fenêtre (2 appels car max 10 handles/call) |
+| Recherche X thématique | xAI Responses API, tool `x_search` (query libre, sans handle restriction) | Requêtes thématiques (Tesla, SpaceX, santé, etc.) |
+| Web | xAI Responses API, tool `web_search` | Journaux QC + recherches actualité (filtre `allowed_domains` côté prompt) |
 
 **Fenêtres temporelles** (America/Toronto) :
 - **Briefing matin (6h45)** : couvre `[hier 17h30 → aujourd'hui 6h30]` (~13h, majoritairement nocturne)
@@ -317,10 +317,14 @@ python scripts/build-briefing.py --moment matin --fixture tests/fixtures/2026-04
 
 - **Runtime** : Python 3.11+ (machine Hermes)
 - **Template** : Jinja2 (décision figée)
-- **API X** : xAI Grok `x_search` via `/v1/responses` — **endpoint à confirmer** côté xAI (le path peut différer de la convention OpenAI) ; clé dans OpenClaw secrets
-- **API Web** : `web_search` Hermes
+- **API xAI** : **Responses API** (recommandée par xAI, la Chat Completions est legacy/deprecated) — `POST https://api.x.ai/v1/responses`, auth `Authorization: Bearer <clé>` (clé dans OpenClaw secrets). L'ancienne Live Search API (`search_parameters` sur `/v1/chat/completions`) est **dépréciée depuis 2026-01-12** (410 Gone). On utilise les tools server-side `x_search` et `web_search` passés dans le champ `tools`.
+- **Doc canonique de référence** : https://docs.x.ai/overview — toute évolution d'endpoint/modèle vérifiée là en premier.
+- **Modèle** : alias **`grok-4-1-fast-latest`** par défaut (optimisé agentic tool calling, pricing bas ~0.20 $/M input, 0.50 $/M output). Escalade vers **`grok-4.20-latest`** (flagship, meilleur taux d'hallucination, strict prompt adherence) uniquement si la qualité de triage n'est pas satisfaisante après 2 semaines d'utilisation. Usage d'alias `-latest` = upgrades automatiques.
+- **Mode d'appel** : stateless (on ne persiste pas côté xAI — chaque briefing est indépendant, pas besoin du mode stateful de la Responses API).
+- **Paramètres `x_search`** : `allowed_x_handles` (max 10/requête — les 15 comptes sont splittés sur 2 appels), `from_date`/`to_date` (ISO 8601, fenêtre glissante), mutuellement exclusif avec `excluded_x_handles`.
+- **`web_search`** : outil server-side xAI (pas besoin d'un `web_search` externe, on reste dans un seul provider pour simplifier auth + observabilité + facturation).
 - **Tracking** : service FastAPI + SQLite sur même hôte, exposé via nginx Hermes
-- **Budget financier** : ~0.25-0.40 $/jour (2 briefings × 6-10 appels Grok) — alerte si > 15 $/mois
+- **Budget financier** : ~0.35-0.40 $/jour (breakdown : ~0.32 $ tool fees à 5 $/1000 appels × ~16 queries/jour × 3-5 tool calls internes + ~0.05 $ tokens). Alerte si > 15 $/mois.
 - **Budget latence** : < 3 min par briefing (timeout hard 180s)
 - **Budget tokens** : ~100 K tokens/jour max (garde-fou dans le script, abort si dépassé)
 
