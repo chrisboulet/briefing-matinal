@@ -630,3 +630,98 @@ def test_warnings_list_of_non_strings_coerced_to_str(
 
     resp = client.call("s", "u", tool="x_search")
     assert resp.parsed_output["warnings"] == ["ok", "42", "None"]
+
+
+# ---------------------------------------------------------------------------
+# Issue #25 : response_schema / schema_name overrides for enrichment
+# ---------------------------------------------------------------------------
+
+
+def test_call_default_schema_is_briefing_items(
+    client: XAIClient, httpx_mock: HTTPXMock
+) -> None:
+    """Without the new params, body sent to xAI contains
+    response_format.json_schema.name == "briefing_items" AND the current
+    ITEMS_SCHEMA."""
+    httpx_mock.add_response(url=XAI_URL, json=_ok_payload())
+    client.call("sys", "user", tool="x_search")
+
+    body = json.loads(httpx_mock.get_requests()[0].content)
+    json_schema = body["response_format"]["json_schema"]
+    assert json_schema["name"] == "briefing_items"
+    assert json_schema["schema"] == ITEMS_SCHEMA
+
+
+def test_call_custom_schema_overrides_default(
+    client: XAIClient, httpx_mock: HTTPXMock
+) -> None:
+    """When response_schema + schema_name are passed, the body carries those
+    values instead of ITEMS_SCHEMA / briefing_items."""
+    custom_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["summary", "warnings"],
+        "properties": {
+            "summary": {"type": "string", "minLength": 0, "maxLength": 2000},
+            "warnings": {
+                "type": "array",
+                "minItems": 0,
+                "items": {"type": "string"},
+            },
+        },
+    }
+    # The handler returns {"summary": "...", "warnings": []} shaped payload
+    inner = json.dumps({"summary": "enriched content", "warnings": []})
+    payload = {
+        "model": "grok",
+        "output_text": inner,
+        "usage": {"input_tokens": 10, "output_tokens": 5, "tool_calls": 1},
+    }
+    httpx_mock.add_response(url=XAI_URL, json=payload)
+
+    client.call(
+        "sys", "user",
+        tool="web_search",
+        tool_params={"allowed_domains": ["example.com"]},
+        response_schema=custom_schema,
+        schema_name="enrichment",
+    )
+
+    body = json.loads(httpx_mock.get_requests()[0].content)
+    json_schema = body["response_format"]["json_schema"]
+    assert json_schema["name"] == "enrichment"
+    assert json_schema["schema"] == custom_schema
+
+
+def test_call_custom_schema_no_items_key_not_enforced(
+    client: XAIClient, httpx_mock: HTTPXMock
+) -> None:
+    """With a custom schema, the LLM may return {"summary": "x"} (no "items"
+    key) and parsing must NOT raise XAIInvalidResponse — the items-presence
+    check only applies for the default briefing_items schema."""
+    custom_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["summary"],
+        "properties": {
+            "summary": {"type": "string"},
+        },
+    }
+    inner = json.dumps({"summary": "x"})  # no "items" key, no "warnings"
+    payload = {
+        "model": "grok",
+        "output_text": inner,
+        "usage": {"input_tokens": 1, "output_tokens": 1, "tool_calls": 0},
+    }
+    httpx_mock.add_response(url=XAI_URL, json=payload)
+
+    resp = client.call(
+        "sys", "user",
+        tool="web_search",
+        tool_params={"allowed_domains": ["example.com"]},
+        response_schema=custom_schema,
+        schema_name="enrichment",
+    )
+    assert resp.parsed_output["summary"] == "x"
+    # warnings normalized to [] when absent
+    assert resp.parsed_output["warnings"] == []

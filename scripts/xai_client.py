@@ -209,6 +209,8 @@ class XAIClient:
         tool: Literal["x_search", "web_search"],
         tool_params: dict[str, Any] | None = None,
         prompt_label: str = "unspecified",
+        response_schema: dict[str, Any] | None = None,
+        schema_name: str = "briefing_items",
     ) -> XAIResponse:
         """
         Effectue UN appel à /v1/responses avec un seul tool, et retourne
@@ -222,8 +224,21 @@ class XAIClient:
           le budget de retry général)
         - JSON invalide : 1 retry max (compteur séparé)
         - Total max : ~30s + ~14s + 60s = ~104s, sous le budget 180s du PRD §S3
+
+        Args:
+            response_schema: schema JSON custom à utiliser à la place de
+                ITEMS_SCHEMA (issue #25 — enrichment call). Si None, comportement
+                strictement identique à la V1 (sourcing multi-items). Quand fourni,
+                le caller doit gérer sa propre shape de réponse (ex: enrichment
+                attend `{summary, warnings}` single-item) — `_parse_response` ne
+                validera PAS la présence d'`items` dans ce cas.
+            schema_name: nom du schema (injecté en `response_format.json_schema.name`).
+                Laissé à "briefing_items" par défaut pour compat arrière.
         """
-        body = self._build_body(system_prompt, user_prompt, tool, tool_params)
+        body = self._build_body(
+            system_prompt, user_prompt, tool, tool_params,
+            response_schema=response_schema, schema_name=schema_name,
+        )
 
         attempt = 0          # 5xx / timeout / network
         attempt_429 = 0      # rate limit (séparé)
@@ -295,7 +310,7 @@ class XAIClient:
 
             # 2xx — parser la réponse
             try:
-                parsed = self._parse_response(resp.json())
+                parsed = self._parse_response(resp.json(), schema_name=schema_name)
             except (json.JSONDecodeError, KeyError, ValueError) as e:
                 attempt_invalid += 1
                 self._log_call(
@@ -332,6 +347,9 @@ class XAIClient:
         user_prompt: str,
         tool: str,
         tool_params: dict[str, Any] | None,
+        *,
+        response_schema: dict[str, Any] | None = None,
+        schema_name: str = "briefing_items",
     ) -> dict[str, Any]:
         # Validation tool_params (review CRITICAL #3) : refus de toute clé
         # inconnue ou conflictuelle avec `type`.
@@ -348,6 +366,8 @@ class XAIClient:
                 "tool_params must not contain 'type' (set via positional arg)"
             )
 
+        schema = response_schema if response_schema is not None else ITEMS_SCHEMA
+
         return {
             "model": self.model,
             "input": [
@@ -358,16 +378,18 @@ class XAIClient:
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": "briefing_items",
+                    "name": schema_name,
                     "strict": True,
-                    "schema": ITEMS_SCHEMA,
+                    "schema": schema,
                 },
             },
         }
 
-    def _parse_response(self, raw: dict[str, Any]) -> dict[str, Any]:
+    def _parse_response(
+        self, raw: dict[str, Any], *, schema_name: str = "briefing_items",
+    ) -> dict[str, Any]:
         """
-        Extrait `model`, l'output texte (JSON conforme à ITEMS_SCHEMA), et l'usage.
+        Extrait `model`, l'output texte (JSON), et l'usage.
 
         TODO(live): valider la forme exacte au premier appel réel.
         Forme actuelle assumée :
@@ -376,32 +398,50 @@ class XAIClient:
             "output": [{type:message, content:[{type:output_text, text:"<json>"}]}],
             "usage": {input_tokens, output_tokens, tool_calls}
           }
+
+        Politique de validation (issue #25) :
+        - `schema_name == "briefing_items"` (défaut, sourcing) : on exige la
+          présence de la clé `items`. Tolérance live (issue #15) : si le LLM
+          renvoie un array nu, on le wrap en `{"items": [...], "warnings": []}`.
+        - `schema_name` custom (ex: enrichment, single-item) : on ne valide PAS
+          `items`. On normalise seulement `warnings` si la clé existe. Le caller
+          inspecte `parsed_output` selon sa propre shape.
         """
         model = raw.get("model", self.model)
+        is_briefing_items = schema_name == "briefing_items"
 
         # Extraction défensive du output_text final
         output_text = self._extract_output_text(raw)
         parsed = json.loads(output_text)
 
-        # Fix live (issue #15) : l'API retourne souvent un array JSON nu
-        # `[{...}, {...}]` au lieu de `{"items": [...], "warnings": [...]}`,
-        # malgré `response_format: json_schema strict`. On tolère les deux formes.
+        # Fix live (issue #15) : pour le sourcing l'API retourne souvent un
+        # array JSON nu `[{...}, {...}]` au lieu de `{"items": [...], "warnings": []}`
+        # malgré `response_format: json_schema strict`. On tolère pour briefing_items.
+        # Pour les schemas custom (enrichment single-item), un array top-level serait
+        # invalide — on propage l'erreur.
         if isinstance(parsed, list):
-            parsed = {"items": parsed, "warnings": []}
+            if is_briefing_items:
+                parsed = {"items": parsed, "warnings": []}
+            else:
+                raise ValueError(
+                    f"parsed output is a list but schema '{schema_name}' expects an object"
+                )
         elif not isinstance(parsed, dict):
             raise ValueError(
                 f"parsed output is neither list nor dict, got {type(parsed).__name__}"
             )
 
-        # Validation minimale de la structure (pour les cas pathologiques)
-        if "items" not in parsed:
+        # Validation minimale de la structure (pour les cas pathologiques).
+        # Appliquée uniquement en sourcing (schema briefing_items) — les schemas
+        # custom (ex: enrichment) n'ont pas de clé `items`.
+        if is_briefing_items and "items" not in parsed:
             raise ValueError(
                 f"missing 'items' in parsed output: {list(parsed.keys())}"
             )
 
         # Normalisation warnings (issue #17) : le LLM peut renvoyer une string
         # unique ou autre chose. On force list[str] pour éviter l'itération
-        # char-par-char côté caller.
+        # char-par-char côté caller. Appliqué pour toutes les shapes (si présent).
         raw_warnings = parsed.get("warnings")
         if isinstance(raw_warnings, str):
             parsed["warnings"] = [raw_warnings]
