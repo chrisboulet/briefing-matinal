@@ -6,7 +6,6 @@ from scripts.select import (
     apply_engagement_filter,
     select_by_section,
     select_dont_miss,
-    select_sixty_seconds,
 )
 
 SECTIONS_CFG = [
@@ -42,33 +41,6 @@ def test_select_by_section_empty_section(make_item):
     out = select_by_section(items, SECTIONS_CFG)
     assert out["ai-tech"]
     assert out["tesla"] == []
-
-
-def test_select_60s_diversifies_sections(make_item):
-    selected = {
-        "ai-tech": [
-            make_item("ai1", "https://e.com/1", section_id="ai-tech", score=0.95),
-            make_item("ai2", "https://e.com/2", section_id="ai-tech", score=0.94),
-        ],
-        "tesla": [make_item("t1", "https://e.com/3", section_id="tesla", score=0.80)],
-        "spacex": [make_item("s1", "https://e.com/4", section_id="spacex", score=0.70)],
-    }
-    out = select_sixty_seconds(selected, n=3)
-    assert len(out) == 3
-    sections = {it.section_id for it in out}
-    assert sections == {"ai-tech", "tesla", "spacex"}
-
-
-def test_select_60s_falls_back_when_few_sections(make_item):
-    selected = {
-        "ai-tech": [
-            make_item("ai1", "https://e.com/1", section_id="ai-tech", score=0.95),
-            make_item("ai2", "https://e.com/2", section_id="ai-tech", score=0.94),
-            make_item("ai3", "https://e.com/3", section_id="ai-tech", score=0.93),
-        ],
-    }
-    out = select_sixty_seconds(selected, n=3)
-    assert len(out) == 3
 
 
 def test_select_dont_miss_avoids_redundancy(make_item):

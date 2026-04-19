@@ -38,7 +38,6 @@ class Briefing:
     generated_at: datetime
     window_start: datetime
     window_end: datetime
-    sixty_seconds: list[Item]
     sections: dict[str, list[Item]]
     dont_miss: Item | None
     config_hash: str
@@ -48,7 +47,7 @@ class Briefing:
 
     @property
     def items_count(self) -> int:
-        n = len(self.sixty_seconds) + sum(len(v) for v in self.sections.values())
+        n = sum(len(v) for v in self.sections.values())
         if self.dont_miss is not None:
             n += 1
         return n

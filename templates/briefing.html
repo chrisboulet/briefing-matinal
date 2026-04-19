@@ -98,12 +98,8 @@ article:last-of-type { border-bottom: none; }
    internaux de pipeline (items hors fenêtre, sections vides, appels xAI dégradés)
    destinés à stderr et au JSON stdout pour hermes-agent, pas au lecteur final. #}
 
-<h2>⚡ EN 60 SECONDES</h2>
-{% for item in briefing.sixty_seconds %}
-{{ render_item(item, hero=true) }}
-{% else %}
-<p class="empty">Pas assez d'éléments marquants pour un résumé express.</p>
-{% endfor %}
+{# Section 'EN 60 SECONDES' retirée (issue #22) : les items y étaient redondants
+   avec leurs sections thématiques respectives. #}
 
 {% for section in sections_in_order %}
 <h2>{{ section.emoji }} {{ section.label }}</h2>

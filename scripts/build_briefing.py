@@ -20,7 +20,6 @@ from scripts.select import (
     apply_engagement_filter,
     select_by_section,
     select_dont_miss,
-    select_sixty_seconds,
 )
 from scripts.window import briefing_id as compute_briefing_id
 from scripts.window import compute_window
@@ -133,7 +132,6 @@ def build(
     deduped = dedupe(filtered)
 
     sections = select_by_section(deduped, sections_cfg)
-    sixty_sec = select_sixty_seconds(sections, n=3)
     dont_miss = select_dont_miss(deduped, sections)
 
     warnings: list[str] = list(source_warnings)
@@ -147,7 +145,6 @@ def build(
         generated_at=datetime.now(tz=UTC),
         window_start=window_start,
         window_end=window_end,
-        sixty_seconds=sixty_sec,
         sections=sections,
         dont_miss=dont_miss,
         config_hash=cfg_hash,

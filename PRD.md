@@ -76,7 +76,6 @@ Le LLM (xAI Grok) reçoit pour chaque appel un prompt structuré. Les templates 
 - `prompts/x_search.txt` — recherche sur un compte X ou un thème
 - `prompts/web_search.txt` — recherche web thématique
 - `prompts/rank.txt` — sélection finale par section (si on excède `max_items`)
-- `prompts/brief_60s.txt` — composition des 3 items "EN 60 SECONDES"
 - `prompts/dont_miss.txt` — sélection du "À NE PAS MANQUER"
 
 **Critères de pertinence** (inclus dans tous les prompts de sélection) :
@@ -86,9 +85,9 @@ Le LLM (xAI Grok) reçoit pour chaque appel un prompt structuré. Les templates 
 4. **Pertinence Chris** : match avec ses intérêts déclarés (cf. section Utilisateur)
 5. **Évitement doublon cross-section** : si un item peut aller dans 2 sections, le placer dans la plus spécifique
 
-**Sélection "EN 60 SECONDES"** : 3 items choisis *après* que toutes les sections sont remplies, parmi l'union des items sélectionnés. Critère : convergence inter-sources (plusieurs sources indépendantes mentionnent le même événement) OU impact mesurable (chiffre, décision réglementaire, launch).
-
 **Sélection "À NE PAS MANQUER"** : 1 item par briefing, choisi dans l'union des items *non retenus* par les sections (pour éviter la redondance). Privilégier : vidéo longue (si matin = queue de la journée) ou thread analytique (si soir = lecture de soirée).
+
+> Note : la section "EN 60 SECONDES" initialement prévue a été retirée via l'[issue #22](https://github.com/chrisboulet/briefing-matinal/issues/22) — redondante avec les sections thématiques et "À NE PAS MANQUER".
 
 ### S2 — Compilation HTML
 
@@ -98,8 +97,6 @@ Le briefing est un fichier HTML standalone rendu par **Jinja2** (décision : pas
 
 ```
 ☀️ BRIEFING MATIN — [jour long FR, date]        (ou 🌙 BRIEFING SOIR)
-─────────────────────
-⚡ EN 60 SECONDES                  — 3 faits marquants
 ─────────────────────
 🤖 AI / TECH                       — 3 items max
 🚗 TESLA                           — 2 items max
@@ -238,7 +235,6 @@ class Briefing:
     generated_at: datetime     # UTC
     window_start: datetime
     window_end: datetime
-    sixty_seconds: list[Item]  # 3 items
     sections: dict[str, list[Item]]  # section_id → items triés
     dont_miss: Item
     config_hash: str           # SHA-256 de comptes.json

@@ -30,7 +30,6 @@ def minimal_briefing(make_item) -> Briefing:
         generated_at=datetime(2026, 4, 19, 10, 44, tzinfo=UTC),
         window_start=datetime(2026, 4, 18, 21, 30, tzinfo=UTC),
         window_end=datetime(2026, 4, 19, 10, 30, tzinfo=UTC),
-        sixty_seconds=[a, t, p],
         sections={"ai-tech": [a], "tesla": [t], "spacex": [], "sante": [], "politique": [p], "business": []},
         dont_miss=dm,
         config_hash="abc1234567890",
@@ -49,7 +48,7 @@ def test_render_produces_html(minimal_briefing, sections_cfg):
 def test_render_contains_key_sections(minimal_briefing, sections_cfg):
     html, _ = render(minimal_briefing, sections_cfg)
     assert "BRIEFING MATIN" in html
-    assert "EN 60 SECONDES" in html
+    assert "EN 60 SECONDES" not in html  # retiré via issue #22
     assert "À NE PAS MANQUER" in html
     for section in sections_cfg:
         assert section["label"] in html
@@ -64,10 +63,9 @@ def test_render_no_cdn(minimal_briefing, sections_cfg):
 
 def test_render_blocks_cdn_in_summary(minimal_briefing, sections_cfg):
     bad = replace(
-        minimal_briefing.sixty_seconds[0],
+        minimal_briefing.sections["ai-tech"][0],
         summary="See https://fonts.googleapis.com/css?foo for details",
     )
-    minimal_briefing.sixty_seconds[0] = bad
     minimal_briefing.sections["ai-tech"][0] = bad
     with pytest.raises(RenderError, match="CDN"):
         render(minimal_briefing, sections_cfg)
@@ -87,7 +85,6 @@ def test_render_dark_mode_css_present(minimal_briefing, sections_cfg):
 
 def test_render_escapes_dangerous_titles(make_item, sections_cfg, minimal_briefing):
     evil = make_item('<script>alert(1)</script>', "https://e.com/x", section_id="ai-tech")
-    minimal_briefing.sixty_seconds = [evil]
     minimal_briefing.sections["ai-tech"] = [evil]
     html, _ = render(minimal_briefing, sections_cfg)
     assert "<script>alert(1)</script>" not in html
@@ -96,10 +93,11 @@ def test_render_escapes_dangerous_titles(make_item, sections_cfg, minimal_briefi
 
 def test_render_alt_sources_pluralized(make_item, sections_cfg, minimal_briefing):
     one = make_item("a", "https://e.com/1", section_id="ai-tech")
+    two = make_item("b", "https://e.com/2", section_id="tesla")
     one_alt = replace(one, alt_sources=("@x",))
-    two_alt = replace(one, alt_sources=("@x", "@y"))
+    two_alt = replace(two, alt_sources=("@x", "@y"))
     minimal_briefing.sections["ai-tech"] = [one_alt]
-    minimal_briefing.sixty_seconds = [two_alt]
+    minimal_briefing.sections["tesla"] = [two_alt]
     html, _ = render(minimal_briefing, sections_cfg)
     assert "+ 1 autre" in html
     assert "+ 2 autres" in html
@@ -146,8 +144,8 @@ def test_render_idempotent_for_same_briefing(minimal_briefing, sections_cfg):
 
 def test_render_warning_when_size_overflows(make_item, sections_cfg, minimal_briefing):
     bloat_summary = "x" * 70_000
-    fat = replace(minimal_briefing.sixty_seconds[0], summary=bloat_summary)
-    minimal_briefing.sixty_seconds = [fat]
+    fat = replace(minimal_briefing.sections["ai-tech"][0], summary=bloat_summary)
+    minimal_briefing.sections["ai-tech"] = [fat]
     html, warnings = render(minimal_briefing, sections_cfg)
     assert any("budget" in w for w in warnings)
     assert len(html.encode("utf-8")) > SIZE_BUDGET_BYTES
