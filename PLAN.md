@@ -10,7 +10,7 @@
 | 1 — Pipeline offline | ✅ Mergé | [#3](https://github.com/chrisboulet/briefing-matinal/pull/3) | `05f8f2b` | 30 |
 | 2 — Template HTML prod | ✅ Mergé | [#4](https://github.com/chrisboulet/briefing-matinal/pull/4) | `b0ca7f1` | 45 |
 | 3 — Intégration xAI | ✅ Mergé | [#6](https://github.com/chrisboulet/briefing-matinal/pull/6) | `09e4c8a` | **104** |
-| 4 — Redirector Tailscale | ⏳ À faire | — | — | — |
+| 4 — Redirector Tailscale | ❌ Skipped ([#13](https://github.com/chrisboulet/briefing-matinal/issues/13)) | — | — | — |
 | 5 — Intégration hermes-agent | ⏳ À faire | — | — | — |
 | 6 — Tests étendus | ⏳ À faire | — | — | — |
 | 7 — Mise en service V1 | ⏳ À faire | — | — | — |
@@ -23,14 +23,14 @@
 - Briefing complet (17 items via fixture) : **8.1 KB** (6× sous budget 50 KB)
 - Mode live xAI **câblé mais non encore validé** sur API réelle (requiert `XAI_API_KEY`)
 
-**Prochaines étapes** : Phase 4 (redirector Tailscale) parallélisable avec Phase 5 (intégration hermes-agent). Phase 6 (tests étendus) au fil. Phase 7 (go-live) une fois mode live validé sur premier appel réel.
+**Prochaines étapes** : Phase 4 skippée (issue #13). Chemin critique : **Phase 5** (intégration hermes-agent) → **Phase 6** (tests étendus, au fil) → **Phase 7** (go-live, une fois mode live validé sur premier appel réel).
 
 ---
 
 ## Contexte
 
 - **PRD source** : `PRD.md` (v2, commit `5a61521`)
-- **Stack** : Python 3.11+, Jinja2, FastAPI (redirector), SQLite (tracking)
+- **Stack** : Python 3.11+, Jinja2, httpx (xAI). FastAPI/SQLite étaient prévus pour Phase 4 (redirector) mais skippés via [#13](https://github.com/chrisboulet/briefing-matinal/issues/13).
 - **Exécution** : hermes-agent orchestre, ce repo fournit scripts + config
 - **Budget V1** : ~0.35-0.40 $/jour, latence < 3 min par briefing
 
@@ -53,16 +53,14 @@ Phase 2 (template Jinja2 final)           ← Milestone 2 : briefing visuellemen
     ↓
 Phase 3 (intégration xAI)                 ← Milestone 3 : briefing avec vraies données
     ↓
-Phase 4 (redirector + tracking)           ← Milestone 4 : liens cliquables trackés
+Phase 5 (intégration hermes-agent)        ← Milestone 4 : contrat script↔harness OK
     ↓
-Phase 5 (intégration hermes-agent)        ← Milestone 5 : contrat script↔harness OK
+Phase 6 (tests & validation)              ← Milestone 5 : suite de tests verte
     ↓
-Phase 6 (tests & validation)              ← Milestone 6 : suite de tests verte
-    ↓
-Phase 7 (mise en service V1)              ← Milestone 7 : prod, cron actif
+Phase 7 (mise en service V1)              ← Milestone 6 : prod, cron actif
 ```
 
-Phases 1 et 2 peuvent se chevaucher si besoin. Phase 4 (redirector) est indépendante et peut être démarrée en parallèle de la Phase 3 par un autre dev/agent. Tout le reste est séquentiel.
+Phases 1 et 2 peuvent se chevaucher si besoin. Tout le reste est séquentiel. Phase 4 (redirector) skippée via [issue #13](https://github.com/chrisboulet/briefing-matinal/issues/13) — N=1 lecteur, pas de tracking en V1.
 
 ---
 
@@ -76,7 +74,7 @@ Phases 1 et 2 peuvent se chevaucher si besoin. Phase 4 (redirector) est indépen
 |---|---|
 | `pyproject.toml` | Projet Python avec deps pinnées, `ruff` + `pytest` en dev |
 | `.python-version` | `3.11` (pour pyenv/asdf) |
-| `.env.example` | Template des env vars (`XAI_API_KEY=`, `BRIEFING_ENV=`, `TAILNET_HOSTNAME=`) |
+| `.env.example` | Template des env vars (`XAI_API_KEY=`, `BRIEFING_ENV=`) |
 | `.gitignore` (update) | Ajouter `*.db`, `.venv/`, `.pytest_cache/`, `.ruff_cache/` |
 | `scripts/` | Dossier vide avec `__init__.py` |
 | `templates/` | Dossier vide |
@@ -112,7 +110,7 @@ dev = [
 
 ### Acceptance criteria
 
-- [ ] `python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev,redirector]"` passe sans erreur
+- [ ] `python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"` passe sans erreur (`[redirector]` extra dormant, optionnel)
 - [ ] `pytest` tourne (collecte 0 tests, c'est normal)
 - [ ] `ruff check .` passe (pas encore de code)
 - [ ] `python -c "import json, jsonschema; jsonschema.validate(json.load(open('sources/comptes.json')), json.load(open('sources/comptes.schema.json')))"` passe
@@ -254,7 +252,6 @@ Dans `render.py`, après rendu Jinja, vérifier :
 1. **Taille** : `len(html.encode("utf-8")) < 50_000` → sinon warning stderr (pas bloquant)
 2. **HTML valide** : parse avec `html.parser` stdlib, pas d'erreur
 3. **Pas de CDN résiduel** : regex `https?://.*\.(googleapis|cloudflare|jsdelivr)` → si match, fail build
-4. **Liens vers redirector** : tous les `<a href>` doivent pointer vers le tailnet hostname (en phase 4 on vérifie ça strictement, pour l'instant on accepte les URLs brutes en mode fixture)
 
 ### Acceptance criteria
 
@@ -374,65 +371,23 @@ Le CLI `build_briefing.py` détecte :
 
 ---
 
-## Phase 4 — Redirector + tracking (Tailscale) ⏳ À faire
+## Phase 4 — Redirector + tracking (Tailscale) ❌ Skipped (issue #13)
 
-**Objectif** : déployer le service FastAPI qui raccourcit les URLs et logge les clics. Indépendante des phases 1-3 — peut se faire en parallèle.
+**Statut** : **skippée** via [issue #13](https://github.com/chrisboulet/briefing-matinal/issues/13) avant toute implémentation.
 
-### Livrables
+**Rationale** : le briefing est livré à N=1 lecteur (Chris). Le coût d'un service web (FastAPI + SQLite + cert Tailscale + systemd + purge mensuelle) pour tracker les clics d'un seul utilisateur ne se justifie pas. Substitution : self-report hebdo de Chris (cf. Phase 7 monitoring + PRD §Succès mesurable).
 
-| Fichier | Rôle |
-|---|---|
-| `scripts/redirector.py` | Service FastAPI (routes `/b/:short_id`, `/stats`, `/healthz`) |
-| `scripts/shortlinks.py` | Lib partagée : génération `short_id` + upsert SQLite (utilisée aussi par `build_briefing.py`) |
-| `scripts/migrations/001_init.sql` | Schema SQLite initial (`short_links`, `clicks`) |
-| `scripts/redirector.service` | Unit systemd template (pour déploiement hermes-agent) |
-| `tests/test_redirector.py` | Tests FastAPI avec `TestClient` |
+**Ce qui était prévu** (voir `git log PLAN.md` pour la spec détaillée avant skip) :
+- `scripts/redirector.py` (FastAPI : `/b/:short_id`, `/stats`, `/healthz`)
+- `scripts/shortlinks.py` + `scripts/migrations/001_init.sql`
+- `scripts/redirector.service` (systemd unit) + HTTPS Tailscale
+- Tables SQLite `short_links` + `clicks`, purge 12 mois
 
-### Schema SQLite
-
-```sql
-CREATE TABLE short_links (
-    short_id      TEXT PRIMARY KEY,       -- 8 chars base62
-    target_url    TEXT NOT NULL,
-    briefing_id   TEXT NOT NULL,          -- "2026-04-19-matin"
-    section_id    TEXT NOT NULL,
-    item_title    TEXT NOT NULL,
-    created_at    TEXT NOT NULL           -- ISO 8601 UTC
-);
-
-CREATE TABLE clicks (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    short_id      TEXT NOT NULL REFERENCES short_links(short_id),
-    clicked_at    TEXT NOT NULL,
-    user_agent    TEXT
-);
-
-CREATE INDEX idx_clicks_short_id ON clicks(short_id);
-CREATE INDEX idx_clicks_at ON clicks(clicked_at);
-```
-
-### Déploiement Tailscale
-
-- Service bind sur `tailscale0` uniquement (pas `0.0.0.0`)
-- HTTPS via `tailscale cert hermes.<tailnet>.ts.net` au setup initial (manuel une fois)
-- Systemd unit redémarre auto après crash
-- Purge mensuelle des clics > 12 mois via cron simple (`DELETE FROM clicks WHERE clicked_at < date('now', '-12 months')`)
-
-### Acceptance criteria
-
-- [ ] `curl -k https://hermes.<tailnet>.ts.net/b/<id>` depuis laptop sur tailnet → 302 vers target
-- [ ] Même curl depuis device hors tailnet → DNS ne résout pas (comportement attendu)
-- [ ] 100 requêtes concurrentes : toutes loggées, aucune perdue (test avec `httpx` async dans les tests)
-- [ ] `/stats?from=...&to=...` retourne JSON avec counts par section
-- [ ] `/healthz` retourne 200 si SQLite accessible
-
-### Commits suggérés
-
-1. `feat(db): SQLite schema and migrations`
-2. `feat(shortlinks): short_id generation + upsert lib`
-3. `feat(redirector): FastAPI service with redirect and stats`
-4. `chore(deploy): systemd unit for redirector`
-5. `test(redirector): integration tests with TestClient`
+**Ce qui est préservé pour éventuelle reprise si N > 1** :
+- Extra `[redirector]` dormant dans `pyproject.toml` (`fastapi`, `uvicorn[standard]`)
+- Champ `Item.short_url: str = ""` dans `scripts/models.py`
+- Template Jinja `{{ item.short_url or item.canonical_url }}` dans `templates/partials/_item.html` (tombe sur `canonical_url` aujourd'hui)
+- Initialisation `short_url=""` dans `scripts/sourcing.py` à la conversion LLM→Item
 
 ---
 
@@ -453,7 +408,6 @@ CREATE INDEX idx_clicks_at ON clicks(clicked_at);
 **Env vars attendues** :
 - `XAI_API_KEY` — requis en mode live
 - `BRIEFING_ENV` — `production` | `staging` | `dry-run`
-- `TAILNET_HOSTNAME` — ex. `hermes.chris-boulet.ts.net`
 - `TELEGRAM_CHAT_ID` — passé à hermes uniquement, pas au script
 - `NAS_PATH` — ex. `/mnt/nas/commun/briefing-matinal`
 
@@ -514,7 +468,6 @@ CREATE INDEX idx_clicks_at ON clicks(clicked_at);
 
 - **Logique métier** (dedup, select, window) : **100 %** de lignes
 - **I/O** (xai_client, render) : ≥ 80 % (le reste c'est happy path trivial)
-- **Redirector** : tests d'intégration, pas de cible de couverture stricte
 
 ### Tests "pièges" à ne pas oublier
 
@@ -541,8 +494,6 @@ CREATE INDEX idx_clicks_at ON clicks(clicked_at);
 
 - [ ] Cron hermes-agent programmé : 6h44:45 et 17h29:45 America/Toronto
 - [ ] `XAI_API_KEY` injectée par hermes-agent au runtime
-- [ ] Redirector up, `tailscale status` montre le hostname OK
-- [ ] HTTPS cert Tailscale actif (`curl -I https://hermes.<tailnet>.ts.net/healthz` → 200)
 - [ ] Chat Telegram de prod configuré dans hermes-agent
 - [ ] Chat Telegram de test configuré (pour `BRIEFING_ENV=staging`)
 - [ ] NAS monté et accessible en écriture par hermes-agent
@@ -556,7 +507,7 @@ CREATE INDEX idx_clicks_at ON clicks(clicked_at);
 - Vérif quotidienne des logs hermes-agent (erreurs, latence, coût)
 - Chris tient un `FEEDBACK.md` dans le repo : ajustements proposés, items trouvés non pertinents, comptes/thèmes à changer
 - Coût réel vs budget : si > 0.50 $/jour, investigate (trop de tool calls ? modèle trop gros ?)
-- Clics mesurés via `/stats` : cible ≥ 1 clic/briefing en moyenne après semaine 2
+- Self-report Chris : ≥ 1 item cliqué/jour en moyenne après semaine 2 (tracking direct skippé, voir issue #13)
 
 ### Décisions à prendre en fin de période 2 semaines
 
@@ -570,13 +521,11 @@ CREATE INDEX idx_clicks_at ON clicks(clicked_at);
 ## Dépendances inter-phases
 
 ```
-Phase 0  ──────┬──→ Phase 1 ──→ Phase 2 ──→ Phase 3 ──┐
-               │                                       ├──→ Phase 5 ──→ Phase 6 ──→ Phase 7
-               └──→ Phase 4 ───────────────────────────┘
+Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 5 → Phase 6 → Phase 7
 ```
 
-- **Phase 4 peut démarrer dès la fin de Phase 0** — elle n'a besoin que du scaffolding
-- **Phase 5 dépend de Phase 3 ET Phase 4** — il faut les deux pour câbler le contrat
+- **Phase 4 skippée** via [issue #13](https://github.com/chrisboulet/briefing-matinal/issues/13) (N=1, pas de tracking en V1)
+- **Phase 5 dépend de Phase 3** — il faut le mode live xAI pour câbler le contrat hermes-agent
 - **Phase 6 peut commencer pendant Phase 2** pour les tests unitaires, mais le e2e attend Phase 3+
 
 ## Questions ouvertes à trancher en cours de route
@@ -594,12 +543,12 @@ Phase 0  ──────┬──→ Phase 1 ──→ Phase 2 ──→ Phas
 | 1 — Pipeline offline | 4-6 h | non |
 | 2 — Template HTML | 3-5 h | oui (avec 1) |
 | 3 — Intégration xAI | 4-6 h | non |
-| 4 — Redirector | 2-4 h | oui (avec 1-3) |
+| 4 — Redirector | ❌ Skipped (#13) | — |
 | 5 — Intégration hermes | 2-3 h | non |
 | 6 — Tests | 3-5 h | partiellement (au fil) |
 | 7 — Mise en service | 1-2 h actif + 2 semaines de monitoring | — |
 
-**Total dev actif** : ~20-30 h étalées sur 1-2 semaines réelles, monitoring 2 semaines post-lancement.
+**Total dev actif** : ~18-26 h étalées sur 1-2 semaines réelles, monitoring 2 semaines post-lancement.
 
 ---
 

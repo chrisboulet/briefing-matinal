@@ -10,7 +10,6 @@ Pipeline de briefing matinal personnalisé — veille multi-domaine livrée 2×/
 - 📰 **Sources** : 15 comptes X surveillés + 8 recherches X thématiques + sites QC/CA (`journaldequebec.com`, `lesaffaires.com`, `lapresse.ca`)
 - 🤖 **Pipeline** : xAI Grok (`grok-4-1-fast-non-reasoning`) via Responses API + tools server-side `x_search` / `web_search`
 - 📱 **Format** : HTML standalone (~8 KB), inline CSS, mobile-first, dark/light auto, contraste AA
-- 🔗 **Tracking clics** : short-links via redirector Tailscale (Phase 4)
 - 💰 **Budget** : ~0.22-0.30 $/jour (~7-9 $/mois)
 
 ## Architecture
@@ -79,7 +78,7 @@ Prérequis : Python 3.11+, `pip` ≥ 23.
 ```bash
 # Setup
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev,redirector]"
+pip install -e ".[dev]"
 
 # Tests + lint
 pytest -q                     # 104 tests, 1.9s

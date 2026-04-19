@@ -12,7 +12,7 @@ Pipeline V1 **assemblé et testé hors-ligne**. 4 phases du PLAN mergées sur `m
 | 1 — Pipeline offline | ✅ PR #3 | `models`, `config`, `window`, `dedup`, `select`, `render`, `build_briefing`, fixture, 30 tests |
 | 2 — Template HTML prod | ✅ PR #4 | `templates/briefing.html` AA + dark/light, macro `_item.html`, 15 tests |
 | 3 — Intégration xAI | ✅ PR #6 | `xai_client`, `sourcing`, 4 prompts versionnés, `docs/xai-integration.md`, 59 tests |
-| 4 — Redirector Tailscale | ⏳ | service FastAPI + SQLite + tracking clics (parallélisable) |
+| 4 — Redirector Tailscale | ❌ Skipped ([#13](https://github.com/chrisboulet/briefing-matinal/issues/13)) | N=1 lecteur, pas de tracking en V1 |
 | 5 — Intégration hermes-agent | ⏳ | contrat stdout JSON figé, fallback NAS, runbook |
 | 6 — Tests étendus | ⏳ | DST edge cases, schema invalid, fixtures additionnelles |
 | 7 — Mise en service V1 | ⏳ | cron, premier envoi, monitoring 2 semaines |
@@ -61,7 +61,7 @@ briefing-matinal/
 ```bash
 # Setup initial
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev,redirector]"
+pip install -e ".[dev]"
 
 # Tests + lint
 pytest -q                            # 104 tests, 1.9s
@@ -97,7 +97,7 @@ python -m scripts.build_briefing --moment matin \
 | D3 | Budget lecture | Triage pur ≤ 5 min |
 | D4 | Politique | 1 section unifiée, 3 items max |
 | D5 | "À ne pas manquer" | Dans les 2 briefings |
-| D6 | Tracking | Short-links via redirector Tailscale (Phase 4) |
+| D6 | Tracking | ❌ Aucun tracking V1 ([issue #13](https://github.com/chrisboulet/briefing-matinal/issues/13)) — self-report à la place |
 | D7 | Langue | FR-QC structure, bilingue toléré sans traduction |
 
 ## Contraintes dures (non négociables)
@@ -117,7 +117,7 @@ python -m scripts.build_briefing --moment matin \
 - **jinja2** StrictUndefined + autoescape
 - **pydantic** pour validation (contrat I/O xAI)
 - **jsonschema** draft 2020-12 pour `comptes.json`
-- **fastapi + uvicorn** (Phase 4, redirector — déjà dans `[redirector]` extras)
+- **fastapi + uvicorn** (dormant dans `[redirector]` extras — Phase 4 skippée #13, hooks préservés pour reprise éventuelle si N > 1)
 - **pytest + pytest-httpx** pour mocks API
 - **ruff** line-length 110, target py311 (configuré dans `pyproject.toml`)
 - **mypy** strict (configuré, pas encore lancé en CI)
