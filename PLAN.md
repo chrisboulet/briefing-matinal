@@ -199,14 +199,14 @@ Comportement :
 
 ### Livrables
 
+> **Note post-merge (PR #4)** : `_section.html` et `_hero.html` initialement prévus ont été **consolidés dans une seule macro `_item.html`** (paramètre `hero=bool`) + des boucles Jinja dans `briefing.html`. Même DRY, moins de fichiers à maintenir.
+
 | Fichier | Rôle |
 |---|---|
 | `templates/briefing.html` | Template Jinja2 final |
-| `templates/partials/_item.html` | Macro Jinja pour un item (réutilisé par toutes les sections) |
-| `templates/partials/_section.html` | Macro pour une section standard |
-| `templates/partials/_hero.html` | Macro pour "EN 60 SECONDES" et "À NE PAS MANQUER" |
-| `scripts/render.py` (update) | Ajout validation taille + contraste |
-| `tests/test_render.py` | Golden tests sur le HTML produit |
+| `templates/partials/_item.html` | Macro `render_item(item, hero=False)` — réutilisée pour 60s, sections, dont_miss |
+| `scripts/render.py` (update) | Ajout validation taille + regex anti-CDN |
+| `tests/test_render.py` | 15 tests structuraux sur le HTML produit |
 
 ### Design constraints (rappel PRD §S2)
 
@@ -287,19 +287,25 @@ Dans `render.py`, après rendu Jinja, vérifier :
 
 ### Livrables
 
+> **Note post-merge (PR #6)** : écart volontaire vs plan initial, documenté ici pour traçabilité.
+>
+> - `scripts/errors.py` prévu → **fusionné dans `scripts/xai_client.py`** (hiérarchie `XAIError` + sous-classes exposées au même niveau que le client, pas d'intérêt à un fichier séparé).
+> - `prompts/rank.txt`, `prompts/brief_60s.txt`, `prompts/dont_miss.txt` prévus → **logique déplacée en Python pur** dans `scripts/select.py` (`select_by_section`, `select_sixty_seconds`, `select_dont_miss`). Pas besoin d'un 2e appel LLM : le 1er appel LLM renvoie déjà un `score` par item, et le ranking local est déterministe + idempotent + gratuit.
+> - Prompts renommés : `x_search_accounts.txt → search_accounts.txt`, `x_search_theme.txt → search_theme.txt`, `web_search.txt → search_web.txt` (préfixe du tool implicite, nom plus court).
+> - **Ajouts** non prévus : `docs/xai-integration.md` (référence opérationnelle), `tests/test_sourcing.py` (22 tests du orchestrateur, en plus des 37 de `test_xai_client.py`).
+
 | Fichier | Rôle |
 |---|---|
-| `scripts/xai_client.py` | Wrapper `httpx` autour de `POST /v1/responses` |
+| `scripts/xai_client.py` | Wrapper `httpx` + hiérarchie d'exceptions + retry/backoff |
+| `scripts/sourcing.py` | Orchestrateur (batchs accounts + N thèmes + 1 web) |
+| `scripts/build_briefing.py` (update) | Switch `--fixture` (offline) vs live mode via `XAI_API_KEY` |
 | `prompts/system.txt` | Prompt système commun à tous les appels |
-| `prompts/x_search_accounts.txt` | Template prompt pour recherche sur comptes X |
-| `prompts/x_search_theme.txt` | Template prompt pour recherche thématique X |
-| `prompts/web_search.txt` | Template prompt pour recherche web |
-| `prompts/rank.txt` | Prompt de ranking quand on excède `max_items` |
-| `prompts/brief_60s.txt` | Prompt pour composer "EN 60 SECONDES" |
-| `prompts/dont_miss.txt` | Prompt pour choisir "À NE PAS MANQUER" |
-| `scripts/sourcing.py` | Orchestrateur des appels parallèles (accounts + themes + web) |
-| `scripts/errors.py` | Retry logic, backoff, dégradation gracieuse |
-| `tests/test_xai_client.py` | Tests avec `pytest-httpx` (mocks) |
+| `prompts/search_accounts.txt` | Template Jinja prompt comptes X |
+| `prompts/search_theme.txt` | Template Jinja prompt thématique X |
+| `prompts/search_web.txt` | Template Jinja prompt web |
+| `docs/xai-integration.md` | Référence opérationnelle (endpoint, retry, coût, TODO live) |
+| `tests/test_xai_client.py` | 37 tests via `pytest-httpx` mocks |
+| `tests/test_sourcing.py` | 22 tests via `StubClient` |
 
 ### Contrat `xai_client.py`
 
