@@ -53,31 +53,55 @@ h2 {
   margin: 1.75rem 0 .75rem;
   letter-spacing: .01em;
 }
-h3 {
-  font-size: 1rem;
-  line-height: 1.35;
-  margin: 0 0 .35rem;
-  font-weight: 600;
-}
 p { margin: .35rem 0; }
 a { color: var(--link); text-decoration: none; }
 a:hover, a:focus { color: var(--link-hov); text-decoration: underline; }
 article {
-  margin: 0 0 .9rem;
-  padding-bottom: .85rem;
+  margin: 0 0 .7rem;
+  padding-bottom: .55rem;
   border-bottom: 1px solid var(--border);
 }
 article:last-of-type { border-bottom: none; }
+/* Items repliés par défaut (issue #23) — summary = titre cliquable (toggle),
+   body = synthèse + lien "Lire ↗". */
+details { margin: 0; }
+details summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1rem;
+  line-height: 1.35;
+  padding: .3rem 0;
+  list-style: none;
+  color: var(--fg);
+}
+details summary::-webkit-details-marker { display: none; }
+details summary::before {
+  content: "▸";
+  display: inline-block;
+  color: var(--muted);
+  font-size: .85em;
+  margin-right: .4rem;
+  width: .8em;
+}
+details[open] summary::before { content: "▾"; }
+details .body {
+  margin: .4rem 0 .2rem;
+  padding-left: 1.2rem;
+  line-height: 1.55;
+}
+details .src {
+  padding-left: 1.2rem;
+}
 .src { color: var(--muted); font-size: .85rem; margin-top: .25rem; }
 .hero {
   background: var(--hero-bg);
   border-left: 4px solid var(--hero-accent);
-  padding: .85rem 1rem;
+  padding: .75rem 1rem;
   border-radius: 4px;
   margin-bottom: .75rem;
   border-bottom: none;
 }
-.hero h3 { font-size: 1.05rem; }
+.hero details summary { font-size: 1.05rem; color: var(--hero-accent); }
 .empty { color: var(--muted); font-style: italic; font-size: .9rem; }
 .meta {
   color: var(--muted);
@@ -97,89 +121,117 @@ article:last-of-type { border-bottom: none; }
 
 <h2>🤖 AI / Tech</h2>
 <article>
-<h3><a href="https://x.com/AnthropicAI/status/1814000000000000002" rel="noopener noreferrer">Anthropic ships Claude 5.0 with extended context</a></h3>
-<p>Annonce officielle: 2M tokens context, latence réduite de 40%, prix stable.</p>
-<p class="src">via @AnthropicAI</p>
+<details>
+<summary>Anthropic ships Claude 5.0 with extended context</summary>
+<p class="body">Annonce officielle: 2M tokens context, latence réduite de 40%, prix stable.</p>
+<p class="src">via @AnthropicAI · <a href="https://x.com/AnthropicAI/status/1814000000000000002" rel="noopener noreferrer">Lire ↗</a></p>
+</details>
 </article>
 <article>
-<h3><a href="https://x.com/karpathy/status/1814000000000000001" rel="noopener noreferrer">Karpathy on agentic coding patterns</a></h3>
-<p>Long thread sur les patterns émergents en agentic coding et leurs implications design.</p>
-<p class="src">via @karpathy</p>
+<details>
+<summary>Karpathy on agentic coding patterns</summary>
+<p class="body">Long thread sur les patterns émergents en agentic coding et leurs implications design.</p>
+<p class="src">via @karpathy · <a href="https://x.com/karpathy/status/1814000000000000001" rel="noopener noreferrer">Lire ↗</a></p>
+</details>
 </article>
 <article>
-<h3><a href="https://x.com/OpenAI/status/1814000000000000003" rel="noopener noreferrer">OpenAI release: GPT-5 Multi tool</a></h3>
-<p>Nouveau mode multi-tool concurrent, approche similaire au flow Anthropic.</p>
-<p class="src">via @OpenAI</p>
+<details>
+<summary>OpenAI release: GPT-5 Multi tool</summary>
+<p class="body">Nouveau mode multi-tool concurrent, approche similaire au flow Anthropic.</p>
+<p class="src">via @OpenAI · <a href="https://x.com/OpenAI/status/1814000000000000003" rel="noopener noreferrer">Lire ↗</a></p>
+</details>
 </article>
 <h2>🚗 Tesla</h2>
 <article>
-<h3><a href="https://x.com/WholeMarsBlog/status/1814000000000000011" rel="noopener noreferrer">FSD v14 broader rollout begins this week</a></h3>
-<p>Tesla démarre rollout FSD v14 sur l&#39;ensemble du parc HW4 en NA.</p>
-<p class="src">via @WholeMarsBlog + 1 autre</p>
+<details>
+<summary>FSD v14 broader rollout begins this week</summary>
+<p class="body">Tesla démarre rollout FSD v14 sur l&#39;ensemble du parc HW4 en NA.</p>
+<p class="src">via @WholeMarsBlog + 1 autre · <a href="https://x.com/WholeMarsBlog/status/1814000000000000011" rel="noopener noreferrer">Lire ↗</a></p>
+</details>
 </article>
 <article>
-<h3><a href="https://x.com/cernbasher/status/1814000000000000010" rel="noopener noreferrer">Cybertruck production hits 250k unit milestone</a></h3>
-<p>Tesla franchit le cap des 250k Cybertrucks produits depuis le lancement.</p>
-<p class="src">via @cernbasher</p>
+<details>
+<summary>Cybertruck production hits 250k unit milestone</summary>
+<p class="body">Tesla franchit le cap des 250k Cybertrucks produits depuis le lancement.</p>
+<p class="src">via @cernbasher · <a href="https://x.com/cernbasher/status/1814000000000000010" rel="noopener noreferrer">Lire ↗</a></p>
+</details>
 </article>
 <h2>🚀 SpaceX</h2>
 <article>
-<h3><a href="https://x.com/SpaceX/status/1814000000000000021" rel="noopener noreferrer">Starlink V3 sats: 60 launched overnight</a></h3>
-<p>60 satellites V3 déployés cette nuit depuis Vandenberg, capacité +35%.</p>
-<p class="src">via @SpaceX</p>
+<details>
+<summary>Starlink V3 sats: 60 launched overnight</summary>
+<p class="body">60 satellites V3 déployés cette nuit depuis Vandenberg, capacité +35%.</p>
+<p class="src">via @SpaceX · <a href="https://x.com/SpaceX/status/1814000000000000021" rel="noopener noreferrer">Lire ↗</a></p>
+</details>
 </article>
 <h2>🏥 Santé</h2>
 <article>
-<h3><a href="https://x.com/davidasinclair/status/1814000000000000030" rel="noopener noreferrer">Sinclair: NMN longitudinal trial 2-year results</a></h3>
-<p>Étude 2 ans sur 800 sujets, marqueurs biologiques améliorés sur 6 axes.</p>
-<p class="src">via @davidasinclair</p>
+<details>
+<summary>Sinclair: NMN longitudinal trial 2-year results</summary>
+<p class="body">Étude 2 ans sur 800 sujets, marqueurs biologiques améliorés sur 6 axes.</p>
+<p class="src">via @davidasinclair · <a href="https://x.com/davidasinclair/status/1814000000000000030" rel="noopener noreferrer">Lire ↗</a></p>
+</details>
 </article>
 <article>
-<h3><a href="https://x.com/PeterAttiaMD/status/1814000000000000031" rel="noopener noreferrer">Attia: practical Zone 2 protocol update</a></h3>
-<p>Refonte du protocole Zone 2 basée sur 18 mois de données patients.</p>
-<p class="src">via @PeterAttiaMD</p>
+<details>
+<summary>Attia: practical Zone 2 protocol update</summary>
+<p class="body">Refonte du protocole Zone 2 basée sur 18 mois de données patients.</p>
+<p class="src">via @PeterAttiaMD · <a href="https://x.com/PeterAttiaMD/status/1814000000000000031" rel="noopener noreferrer">Lire ↗</a></p>
+</details>
 </article>
 <h2>🏛️ Politique</h2>
 <article>
-<h3><a href="https://www.lapresse.ca/international/2026-04-19/trump-ai-export.php" rel="noopener noreferrer">Trump signs executive order on AI export controls</a></h3>
-<p>Décret signé hier soir restreignant l&#39;export de GPU H300+ vers 12 pays.</p>
-<p class="src">via lapresse.ca</p>
+<details>
+<summary>Trump signs executive order on AI export controls</summary>
+<p class="body">Décret signé hier soir restreignant l&#39;export de GPU H300+ vers 12 pays.</p>
+<p class="src">via lapresse.ca · <a href="https://www.lapresse.ca/international/2026-04-19/trump-ai-export.php" rel="noopener noreferrer">Lire ↗</a></p>
+</details>
 </article>
 <article>
-<h3><a href="https://www.journaldequebec.com/2026/04/19/budget-supplementaire-sante-2026" rel="noopener noreferrer">Legault annonce un budget supplémentaire en santé</a></h3>
-<p>Le gouvernement du Québec ajoute 2,3 G$ au budget santé pour l&#39;exercice en cours.</p>
-<p class="src">via journaldequebec.com</p>
+<details>
+<summary>Legault annonce un budget supplémentaire en santé</summary>
+<p class="body">Le gouvernement du Québec ajoute 2,3 G$ au budget santé pour l&#39;exercice en cours.</p>
+<p class="src">via journaldequebec.com · <a href="https://www.journaldequebec.com/2026/04/19/budget-supplementaire-sante-2026" rel="noopener noreferrer">Lire ↗</a></p>
+</details>
 </article>
 <article>
-<h3><a href="https://www.lapresse.ca/international/2026-04-19/taiwan-survol.php" rel="noopener noreferrer">Tensions Taiwan: nouveau survol PLAAF</a></h3>
-<p>12 appareils PLAAF traversent la ligne médiane, plus haute fréquence depuis février.</p>
-<p class="src">via lapresse.ca</p>
+<details>
+<summary>Tensions Taiwan: nouveau survol PLAAF</summary>
+<p class="body">12 appareils PLAAF traversent la ligne médiane, plus haute fréquence depuis février.</p>
+<p class="src">via lapresse.ca · <a href="https://www.lapresse.ca/international/2026-04-19/taiwan-survol.php" rel="noopener noreferrer">Lire ↗</a></p>
+</details>
 </article>
 <h2>💼 Business</h2>
 <article>
-<h3><a href="https://www.lesaffaires.com/entreprises/bce-distributel-2026" rel="noopener noreferrer">BCE rachète Distributel pour 1,8 G$</a></h3>
-<p>Acquisition annoncée hier soir, attend approbation CRTC.</p>
-<p class="src">via lesaffaires.com</p>
+<details>
+<summary>BCE rachète Distributel pour 1,8 G$</summary>
+<p class="body">Acquisition annoncée hier soir, attend approbation CRTC.</p>
+<p class="src">via lesaffaires.com · <a href="https://www.lesaffaires.com/entreprises/bce-distributel-2026" rel="noopener noreferrer">Lire ↗</a></p>
+</details>
 </article>
 <article>
-<h3><a href="https://www.lesaffaires.com/marches/tsx-cloture-2026-04-18" rel="noopener noreferrer">TSX clôture en hausse de 1.2%, énergie en tête</a></h3>
-<p>Indice composé TSX +1.2% sur la séance, secteur énergie tire la performance.</p>
-<p class="src">via lesaffaires.com</p>
+<details>
+<summary>TSX clôture en hausse de 1.2%, énergie en tête</summary>
+<p class="body">Indice composé TSX +1.2% sur la séance, secteur énergie tire la performance.</p>
+<p class="src">via lesaffaires.com · <a href="https://www.lesaffaires.com/marches/tsx-cloture-2026-04-18" rel="noopener noreferrer">Lire ↗</a></p>
+</details>
 </article>
 
 <h2>📌 À NE PAS MANQUER</h2>
 <article class="hero">
-<h3><a href="https://danielmiessler.com/blog/ai-alignment-2026" rel="noopener noreferrer">Daniel Miessler: AI alignment, the 2026 take</a></h3>
-<p>Essai sur l&#39;évolution du discours alignment depuis 2024.</p>
-<p class="src">via @DanielMiessler</p>
+<details>
+<summary>Daniel Miessler: AI alignment, the 2026 take</summary>
+<p class="body">Essai sur l&#39;évolution du discours alignment depuis 2024.</p>
+<p class="src">via @DanielMiessler · <a href="https://danielmiessler.com/blog/ai-alignment-2026" rel="noopener noreferrer">Lire ↗</a></p>
+</details>
 </article>
 
 <p class="meta">
 briefing: 2026-04-19-matin ·
 config: 2fbf9c0 ·
-git: d8e426e ·
+git: d68732a ·
 prompts: prompts-v1.0 ·
-généré: 2026-04-19T21:12:18+00:00
+généré: 2026-04-19T21:16:43+00:00
 </p>
 </body>
 </html>
