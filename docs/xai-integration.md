@@ -81,32 +81,30 @@ Toute modification du modèle doit :
 
 ## Forme de la réponse
 
-> ⚠️ **Hypothèse documentée** : la doc complète de `docs.x.ai` n'a pas pu être fetchée depuis le sandbox de dev (403). Le parsing dans `xai_client.py` est défensif et tolère plusieurs formes ; les TODO dans le code marquent les points à valider sur premier appel réel.
-
-Forme **attendue** (alignée Responses API style OpenAI) :
+✅ **Confirmée au premier appel live** (issue #15, 2026-04-19) :
 
 ```json
 {
   "id": "resp_xxx",
-  "model": "grok-4-1-fast-2026-04-15",
+  "model": "grok-4-1-fast-non-reasoning",
   "output": [
-    {
-      "type": "message",
-      "role": "assistant",
-      "content": [
-        {"type": "output_text", "text": "{\"items\": [...], \"warnings\": [...]}"}
-      ]
-    }
+    {"type": "custom_tool_call", "name": "x_keyword_search", "call_id": "..."},
+    {"type": "custom_tool_call", "name": "x_semantic_search", "call_id": "..."},
+    {"type": "message", "role": "assistant",
+     "content": [{"type": "output_text", "text": "[{...}, {...}]"}]}
   ],
-  "usage": {
-    "input_tokens": 1234,
-    "output_tokens": 567,
-    "tool_calls": 3
-  }
+  "usage": {"input_tokens": 16000, "output_tokens": 800}
 }
 ```
 
-Le client extrait le `output_text` final et le parse comme JSON conforme à `ITEMS_SCHEMA`.
+**Points à connaître (vs hypothèses initiales)** :
+
+1. **`output_text` est souvent un array JSON nu** `[{...}, {...}]` au lieu du `{"items": [...], "warnings": [...]}` demandé par le prompt — `response_format: json_schema strict` n'est **pas** honoré de façon garantie. Le client wrappe défensivement : si `parsed` est une list, transformée en `{"items": parsed, "warnings": []}`.
+2. **Tool calls** : type réel = `"custom_tool_call"` (pas `"tool_call"` / `"tool_use"` / `"function_call"`). Le fallback de comptage accepte maintenant les 4 alias.
+3. **`usage.tool_calls` n'existe pas** dans la réponse — les tool calls sont à compter dans `output[]` via le fallback `_count_tool_calls_in_output()`.
+4. **Latence** observée : 6-10 s par appel (`grok-4-1-fast-non-reasoning`, ~16-20K tokens input par call).
+
+Le client extrait le `output_text` final (trois chemins tolérés, cf. `_extract_output_text`), parse le JSON, et normalise en `{items, warnings}`.
 
 ## Schéma des items retournés
 
@@ -205,10 +203,11 @@ Le coût d'un test live ≈ 0.22 $.
 
 Marqués `# TODO(live):` dans le code. Liste à jour :
 
-1. Forme exacte de la réponse Responses API (chemin du `output_text`)
-2. Format des `tool_params` pour `web_search` (nom exact de `allowed_domains`)
-3. Headers de rate limit (`X-RateLimit-*` ou autre)
-4. Comportement quand `response_format: json_schema` + tool fails — retourne-t-il quand même un JSON valide ?
+1. ✅ **Résolu (#15)** — `output_text` trouvé via `output[-1].content[-1].text`, et peut être une list ou un dict (parsing défensif).
+2. ✅ **Résolu (#15)** — `usage.tool_calls` n'existe pas ; fallback `_count_tool_calls_in_output()` compte `output[type="custom_tool_call"]`.
+3. Format des `tool_params` pour `web_search` (nom exact de `allowed_domains`) — à valider au premier call web réel.
+4. Headers de rate limit (`X-RateLimit-*` ou autre) — pas encore observés.
+5. Shape des items retournés par le LLM : est-ce que les champs `title/summary/canonical_url/section_id/...` sont respectés, ou est-ce que le modèle renvoie sa propre shape (`post_id/author/content/...`) malgré le schema strict ? — à surveiller sur le prochain test live, peut nécessiter un adaptateur dans `sourcing._to_item()`.
 
 ## Références
 

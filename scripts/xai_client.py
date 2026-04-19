@@ -383,12 +383,22 @@ class XAIClient:
         output_text = self._extract_output_text(raw)
         parsed = json.loads(output_text)
 
-        # Validation minimale de la structure (le strict json_schema côté API
-        # devrait déjà garantir, mais on re-vérifie en cas de fallback)
-        if "items" not in parsed or "warnings" not in parsed:
+        # Fix live (issue #15) : l'API retourne souvent un array JSON nu
+        # `[{...}, {...}]` au lieu de `{"items": [...], "warnings": [...]}`,
+        # malgré `response_format: json_schema strict`. On tolère les deux formes.
+        if isinstance(parsed, list):
+            parsed = {"items": parsed, "warnings": []}
+        elif not isinstance(parsed, dict):
             raise ValueError(
-                f"missing 'items' or 'warnings' in parsed output: {list(parsed.keys())}"
+                f"parsed output is neither list nor dict, got {type(parsed).__name__}"
             )
+
+        # Validation minimale de la structure (pour les cas pathologiques)
+        if "items" not in parsed:
+            raise ValueError(
+                f"missing 'items' in parsed output: {list(parsed.keys())}"
+            )
+        parsed.setdefault("warnings", [])
 
         usage_raw = raw.get("usage", {})
         # TODO(live): valider la clé exacte du compteur tool_calls.
@@ -415,7 +425,9 @@ class XAIClient:
         output = raw.get("output")
         if not isinstance(output, list):
             return 0
-        tool_call_types = ("tool_call", "tool_use", "function_call")
+        # Fix live (issue #15) : le type réel observé est `custom_tool_call`.
+        # On garde les autres pour compat future ou alias éventuels.
+        tool_call_types = ("custom_tool_call", "tool_call", "tool_use", "function_call")
         return sum(
             1 for entry in output
             if isinstance(entry, dict) and entry.get("type") in tool_call_types
