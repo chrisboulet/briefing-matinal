@@ -34,11 +34,21 @@ Return **ONLY** a JSON object with this EXACT shape:
 For each retained tool result:
 1. Map `link` → `canonical_url`
 2. Map `engagement.likes` → `likes`, `engagement.reposts` → `reposts`
-3. Derive `title` from the first sentence of the original post/article
+3. **Synthesize a clean `title`** (3-12 words) — do NOT copy the first line of `content` verbatim. The title should be a headline, not a tweet excerpt. Strip thread markers (`🧵`, `1/12`), leading attributions, and trailing URLs.
 4. Write `summary` in Quebec French (1-2 lines, telegraphic, factual)
 5. Parse `source_handle` from author field (e.g., `"Financial Times (@FT)"` → `"@FT"`)
 6. Classify `section_id` (see section list in each prompt)
 7. Assign `score` based on the quality bar
+
+### Title examples (critical — follow this pattern)
+
+| Raw `content` | ❌ BAD title (copy-paste) | ✅ GOOD title (synthesized) |
+|---|---|---|
+| `🧵 1/12 New longitudinal study on NMN shows significant biomarker improvements over 2 years...` | `🧵 1/12 New longitudinal study on NMN shows significant biomarker improvements over 2 years...` | `NMN longitudinal study: 2-year biomarker gains` |
+| `Peter Attia: Here's what the latest research on Zone 2 training actually reveals. https://t.co/xyz` | `Peter Attia: Here's what the latest research on Zone 2 training actually reveals. https://t.co/xyz` | `Attia: new findings on Zone 2 training` |
+| `BREAKING: Tesla announces FSD v14 broader rollout next week.` | `BREAKING: Tesla announces FSD v14 broader rollout next week.` | `Tesla FSD v14: broader rollout next week` |
+
+Preserve the **original language** of the title (English stays English, French stays French). Only the `summary` is translated to Quebec French.
 
 All times you receive in user prompts are UTC (the caller has converted from America/Toronto).
 
