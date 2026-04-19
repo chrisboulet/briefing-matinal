@@ -324,7 +324,7 @@ python scripts/build-briefing.py --moment matin --fixture tests/fixtures/2026-04
 
 - **Runtime** : Python 3.11+ (machine Hermes)
 - **Template** : Jinja2 (décision figée)
-- **API xAI** : **Responses API** (recommandée par xAI, la Chat Completions est legacy/deprecated) — `POST https://api.x.ai/v1/responses`, auth `Authorization: Bearer <clé>` (clé dans OpenClaw secrets). L'ancienne Live Search API (`search_parameters` sur `/v1/chat/completions`) est **dépréciée depuis 2026-01-12** (410 Gone). On utilise les tools server-side `x_search` et `web_search` passés dans le champ `tools`.
+- **API xAI** : **Responses API** (recommandée par xAI, la Chat Completions est legacy/deprecated) — `POST https://api.x.ai/v1/responses`, auth `Authorization: Bearer <clé>` (clé gérée par hermes-agent, injectée dans l'env du script au runtime via `XAI_API_KEY`). L'ancienne Live Search API (`search_parameters` sur `/v1/chat/completions`) est **dépréciée depuis 2026-01-12** (410 Gone). On utilise les tools server-side `x_search` et `web_search` passés dans le champ `tools`.
 - **Doc canonique de référence** : https://docs.x.ai/overview — toute évolution d'endpoint/modèle vérifiée là en premier.
 - **Modèle** : alias **`grok-4-1-fast-latest`** par défaut (optimisé agentic tool calling, pricing bas ~0.20 $/M input, 0.50 $/M output). Escalade vers **`grok-4.20-latest`** (flagship, meilleur taux d'hallucination, strict prompt adherence) uniquement si la qualité de triage n'est pas satisfaisante après 2 semaines d'utilisation. Usage d'alias `-latest` = upgrades automatiques.
 - **Mode d'appel** : stateless (on ne persiste pas côté xAI — chaque briefing est indépendant, pas besoin du mode stateful de la Responses API).
