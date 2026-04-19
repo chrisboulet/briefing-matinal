@@ -151,3 +151,24 @@ def test_render_warning_when_size_overflows(make_item, sections_cfg, minimal_bri
     html, warnings = render(minimal_briefing, sections_cfg)
     assert any("budget" in w for w in warnings)
     assert len(html.encode("utf-8")) > SIZE_BUDGET_BYTES
+
+
+def test_render_does_not_expose_pipeline_warnings(minimal_briefing, sections_cfg):
+    """Issue #19 : les warnings pipeline (items hors fenêtre, sections vides,
+    appels xAI dégradés) sont des internaux destinés à stderr et au JSON stdout
+    pour hermes-agent — ils ne doivent JAMAIS apparaître dans le HTML rendu."""
+    minimal_briefing.warnings = [
+        "search_accounts_1: skipped item outside window (published_at=2026-04-18T19:40:41+00:00)",
+        "search_theme_Tesla: skipped malformed item (KeyError: 'canonical_url')",
+        "section 'spacex' vide",
+    ]
+    html, _ = render(minimal_briefing, sections_cfg)
+
+    # Aucun warning ne doit fuiter dans le HTML (ni texte, ni emoji, ni classe CSS)
+    for warning_text in minimal_briefing.warnings:
+        assert warning_text not in html, f"warning leaked into HTML: {warning_text!r}"
+    assert "skipped item" not in html
+    assert "skipped malformed" not in html
+    assert "section 'spacex' vide" not in html
+    assert 'class="warn"' not in html
+    assert "--warn-bg" not in html  # variable CSS supprimée

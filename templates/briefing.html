@@ -16,9 +16,6 @@
   --border: #e1e4e8;
   --hero-bg: #f5f7fa;
   --hero-accent: #0a4ea2;
-  --warn-bg: #fff3cd;
-  --warn-bd: #d4a92e;
-  --warn-fg: #5a4500;     /* 8.6:1 vs warn-bg */
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -30,9 +27,6 @@
     --border: #2a2a2a;
     --hero-bg: #1c1c1c;
     --hero-accent: #7cb6ff;
-    --warn-bg: #3a2f0a;
-    --warn-bd: #7a5e1a;
-    --warn-fg: #f0d878;   /* 9.2:1 vs warn-bg */
   }
 }
 * { box-sizing: border-box; }
@@ -84,15 +78,6 @@ article:last-of-type { border-bottom: none; }
   border-bottom: none;
 }
 .hero h3 { font-size: 1.05rem; }
-.warn {
-  background: var(--warn-bg);
-  border: 1px solid var(--warn-bd);
-  color: var(--warn-fg);
-  padding: .6rem .85rem;
-  border-radius: 4px;
-  margin: 0 0 1rem;
-  font-size: .95rem;
-}
 .empty { color: var(--muted); font-style: italic; font-size: .9rem; }
 .meta {
   color: var(--muted);
@@ -109,9 +94,9 @@ article:last-of-type { border-bottom: none; }
 
 <h1>{{ "☀️" if briefing.moment == "matin" else "🌙" }} BRIEFING {{ briefing.moment | upper }} — {{ briefing.briefing_id }}</h1>
 
-{% if briefing.warnings %}
-<p class="warn">⚠️ {{ briefing.warnings | join(" · ") }}</p>
-{% endif %}
+{# briefing.warnings est intentionnellement NON rendu (issue #19) : ce sont des
+   internaux de pipeline (items hors fenêtre, sections vides, appels xAI dégradés)
+   destinés à stderr et au JSON stdout pour hermes-agent, pas au lecteur final. #}
 
 <h2>⚡ EN 60 SECONDES</h2>
 {% for item in briefing.sixty_seconds %}
