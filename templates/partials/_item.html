@@ -1,8 +1,12 @@
-{# Macro de rendu d'un item. hero=True applique le style mis en valeur. #}
+{# Macro de rendu d'un item. hero=True applique le style mis en valeur.
+   Structure details/summary (issue #23) : titre = toggle (collapsed par défaut),
+   synthèse + lien externe dans le corps expandable. #}
 {%- macro render_item(item, hero=False) -%}
 <article{% if hero %} class="hero"{% endif %}>
-<h3><a href="{{ item.short_url or item.canonical_url }}" rel="noopener noreferrer">{{ item.title }}</a></h3>
-<p>{{ item.summary }}</p>
-<p class="src">via {{ item.source_handle }}{% if item.alt_sources %} + {{ item.alt_sources|length }} autre{% if item.alt_sources|length > 1 %}s{% endif %}{% endif %}</p>
+<details>
+<summary>{{ item.title }}</summary>
+<p class="body">{{ item.summary }}</p>
+<p class="src">via {{ item.source_handle }}{% if item.alt_sources %} + {{ item.alt_sources|length }} autre{% if item.alt_sources|length > 1 %}s{% endif %}{% endif %} · <a href="{{ item.short_url or item.canonical_url }}" rel="noopener noreferrer">Lire ↗</a></p>
+</details>
 </article>
 {%- endmacro -%}

@@ -53,31 +53,55 @@ h2 {
   margin: 1.75rem 0 .75rem;
   letter-spacing: .01em;
 }
-h3 {
-  font-size: 1rem;
-  line-height: 1.35;
-  margin: 0 0 .35rem;
-  font-weight: 600;
-}
 p { margin: .35rem 0; }
 a { color: var(--link); text-decoration: none; }
 a:hover, a:focus { color: var(--link-hov); text-decoration: underline; }
 article {
-  margin: 0 0 .9rem;
-  padding-bottom: .85rem;
+  margin: 0 0 .7rem;
+  padding-bottom: .55rem;
   border-bottom: 1px solid var(--border);
 }
 article:last-of-type { border-bottom: none; }
+/* Items repliés par défaut (issue #23) — summary = titre cliquable (toggle),
+   body = synthèse + lien "Lire ↗". */
+details { margin: 0; }
+details summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1rem;
+  line-height: 1.35;
+  padding: .3rem 0;
+  list-style: none;
+  color: var(--fg);
+}
+details summary::-webkit-details-marker { display: none; }
+details summary::before {
+  content: "▸";
+  display: inline-block;
+  color: var(--muted);
+  font-size: .85em;
+  margin-right: .4rem;
+  width: .8em;
+}
+details[open] summary::before { content: "▾"; }
+details .body {
+  margin: .4rem 0 .2rem;
+  padding-left: 1.2rem;
+  line-height: 1.55;
+}
+details .src {
+  padding-left: 1.2rem;
+}
 .src { color: var(--muted); font-size: .85rem; margin-top: .25rem; }
 .hero {
   background: var(--hero-bg);
   border-left: 4px solid var(--hero-accent);
-  padding: .85rem 1rem;
+  padding: .75rem 1rem;
   border-radius: 4px;
   margin-bottom: .75rem;
   border-bottom: none;
 }
-.hero h3 { font-size: 1.05rem; }
+.hero details summary { font-size: 1.05rem; color: var(--hero-accent); }
 .empty { color: var(--muted); font-style: italic; font-size: .9rem; }
 .meta {
   color: var(--muted);

@@ -35,7 +35,7 @@ For each retained tool result:
 1. Map `link` → `canonical_url`
 2. Map `engagement.likes` → `likes`, `engagement.reposts` → `reposts`
 3. **Synthesize a clean `title`** (3-12 words) — do NOT copy the first line of `content` verbatim. The title should be a headline, not a tweet excerpt. Strip thread markers (`🧵`, `1/12`), leading attributions, and trailing URLs.
-4. Write `summary` in Quebec French (1-2 lines, telegraphic, factual)
+4. Write `summary` in Quebec French — **~400-500 characters** (3-5 phrases, substantiel, factuel, journalistic). The summary is displayed when the reader expands the item, so it must give enough context to decide whether to open the source link. Include: what happened, key numbers/names, and why it matters in 1-2 words (don't editorialize).
 5. Parse `source_handle` from author field (e.g., `"Financial Times (@FT)"` → `"@FT"`)
 6. Classify `section_id` (see section list in each prompt)
 7. Assign `score` based on the quality bar

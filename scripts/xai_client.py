@@ -94,7 +94,7 @@ ITEMS_SCHEMA: dict[str, Any] = {
                 ],
                 "properties": {
                     "title": {"type": "string", "minLength": 1, "maxLength": 500},
-                    "summary": {"type": "string", "minLength": 1, "maxLength": 1000},
+                    "summary": {"type": "string", "minLength": 1, "maxLength": 1200},
                     "canonical_url": {"type": "string", "minLength": 1},
                     "source_type": {"enum": ["x_account", "x_search", "web"]},
                     "source_handle": {"type": "string", "minLength": 1},

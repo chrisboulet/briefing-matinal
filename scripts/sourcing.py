@@ -502,8 +502,10 @@ def _to_item(
         title = _derive_title_from_content(raw.get("content") or "")
 
     # Summary : explicit ou `content` (truncate pour budget rendu)
+    # Cap 1200 chars : le prompt demande ~400-500 (issue #23) ; on laisse
+    # de la marge sans que ça explose le budget lisibilité du HTML.
     summary = raw.get("summary") or raw.get("content") or title
-    summary = str(summary)[:800]
+    summary = str(summary)[:1200]
 
     # Source handle : explicit ou parse de `author` ("Name (@handle)")
     source_handle = raw.get("source_handle")

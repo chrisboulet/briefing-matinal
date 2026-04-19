@@ -131,6 +131,49 @@ def test_render_links_have_rel_noopener(minimal_briefing, sections_cfg):
     assert all('rel="noopener noreferrer"' in a for a in article_anchors)
 
 
+def test_render_items_wrapped_in_details(minimal_briefing, sections_cfg):
+    """Issue #23 : chaque item doit être dans un <details> collapsed par défaut."""
+    html, _ = render(minimal_briefing, sections_cfg)
+    # Compte le nombre d'items total (sections + dont_miss)
+    total_items = sum(len(v) for v in minimal_briefing.sections.values())
+    if minimal_briefing.dont_miss:
+        total_items += 1
+    # Chaque item = 1 <details>
+    assert html.count("<details>") == total_items
+    assert html.count("</details>") == total_items
+
+
+def test_render_summary_contains_title(minimal_briefing, sections_cfg):
+    """Le titre de l'item doit apparaître dans le <summary>, pas dans un <h3>."""
+    html, _ = render(minimal_briefing, sections_cfg)
+    first_item = minimal_briefing.sections["ai-tech"][0]
+    # Le titre est dans un <summary>, pas un <h3>
+    assert f"<summary>{first_item.title}</summary>" in html
+    # h3 ne doit plus exister côté items
+    assert "<h3>" not in html
+
+
+def test_render_details_collapsed_by_default(minimal_briefing, sections_cfg):
+    """Aucun <details> ne doit avoir l'attribut `open` par défaut — l'item
+    est replié à l'ouverture du briefing (Chris scanne les titres)."""
+    html, _ = render(minimal_briefing, sections_cfg)
+    assert "<details open>" not in html
+    assert "<details open=" not in html
+
+
+def test_render_link_lire_outside_summary(minimal_briefing, sections_cfg):
+    """Le lien 'Lire ↗' doit être dans le corps expandable, pas dans le
+    <summary> (pour éviter le conflit click-toggle vs click-navigate)."""
+    html, _ = render(minimal_briefing, sections_cfg)
+    # Entre chaque <summary>...</summary>, aucun <a> ne doit être présent
+    between_summary = re.findall(r"<summary>(.*?)</summary>", html, re.DOTALL)
+    assert between_summary, "expected at least one <summary>"
+    for content in between_summary:
+        assert "<a " not in content, f"found <a> inside <summary>: {content[:80]}"
+    # Mais le lien "Lire ↗" doit être présent ailleurs
+    assert "Lire ↗" in html
+
+
 def test_render_minimum_font_size_15px(minimal_briefing, sections_cfg):
     html, _ = render(minimal_briefing, sections_cfg)
     assert "16px" in html  # html base font-size
