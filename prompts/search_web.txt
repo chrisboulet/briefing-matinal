@@ -41,4 +41,11 @@ Wire stories often hit multiple outlets within minutes. If two articles cover th
 # Quantity
 Return up to {{ max_items_total }} items total. Filter aggressively for signal.
 
+# REMINDER : output schema (see system prompt)
+- Exact shape: `{"items": [<item>, ...], "warnings": [...]}`
+- Each item uses EXACT field names: `title, summary, canonical_url, source_type, source_handle, published_at, score, section_id, likes, reposts`
+- Do NOT return raw search results — transform to the schema
+- For this call: `source_type="web"`, `likes=0`, `reposts=0`
+- `source_handle` = the domain (e.g., `"journaldequebec.com"`)
+
 Return JSON only.

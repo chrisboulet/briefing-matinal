@@ -37,4 +37,10 @@ If an item touches multiple, pick the most specific.
 # Quantity
 Return up to {{ max_items_total }} items total across all sections. Quality > quantity. Return fewer if appropriate.
 
+# REMINDER : output schema (see system prompt)
+- Exact shape: `{"items": [<item>, ...], "warnings": [...]}`
+- Each item uses EXACT field names: `title, summary, canonical_url, source_type, source_handle, published_at, score, section_id, likes, reposts`
+- Do NOT return `{post_id, author, content, engagement, link}` — transform to the schema
+- `source_type` for items from this call: `"x_account"`
+
 Return JSON only.

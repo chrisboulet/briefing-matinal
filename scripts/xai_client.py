@@ -398,7 +398,17 @@ class XAIClient:
             raise ValueError(
                 f"missing 'items' in parsed output: {list(parsed.keys())}"
             )
-        parsed.setdefault("warnings", [])
+
+        # Normalisation warnings (issue #17) : le LLM peut renvoyer une string
+        # unique ou autre chose. On force list[str] pour éviter l'itération
+        # char-par-char côté caller.
+        raw_warnings = parsed.get("warnings")
+        if isinstance(raw_warnings, str):
+            parsed["warnings"] = [raw_warnings]
+        elif isinstance(raw_warnings, list):
+            parsed["warnings"] = [str(w) for w in raw_warnings]
+        else:
+            parsed["warnings"] = []
 
         usage_raw = raw.get("usage", {})
         # TODO(live): valider la clé exacte du compteur tool_calls.

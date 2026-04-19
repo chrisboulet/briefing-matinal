@@ -575,3 +575,58 @@ def test_failed_5xx_log_status_server_error(
     logs = _parse_log_lines(captured.err)
     srv_logs = [r for r in logs if r.get("status") == "server_error"]
     assert len(srv_logs) == 3
+
+
+# ---------------------------------------------------------------------------
+# Issue #17 : normalisation warnings (string → list[string])
+# ---------------------------------------------------------------------------
+
+
+def test_warnings_as_string_is_wrapped_in_list(
+    client: XAIClient, httpx_mock: HTTPXMock
+) -> None:
+    """Si le LLM renvoie `"warnings": "Aucun résultat"` (string au lieu de list),
+    _parse_response wrappe en list[string] pour éviter l'itération char-par-char
+    côté caller."""
+    inner = json.dumps({"items": [], "warnings": "Aucun résultat pour @X"})
+    payload = {
+        "model": "grok",
+        "output_text": inner,
+        "usage": {"input_tokens": 1, "output_tokens": 1, "tool_calls": 0},
+    }
+    httpx_mock.add_response(url=XAI_URL, json=payload)
+
+    resp = client.call("s", "u", tool="x_search")
+    warnings = resp.parsed_output["warnings"]
+    assert isinstance(warnings, list)
+    assert warnings == ["Aucun résultat pour @X"]
+
+
+def test_warnings_as_non_list_non_string_defaults_to_empty(
+    client: XAIClient, httpx_mock: HTTPXMock
+) -> None:
+    inner = json.dumps({"items": [], "warnings": {"nope": "dict"}})
+    payload = {
+        "model": "grok",
+        "output_text": inner,
+        "usage": {"input_tokens": 1, "output_tokens": 1, "tool_calls": 0},
+    }
+    httpx_mock.add_response(url=XAI_URL, json=payload)
+
+    resp = client.call("s", "u", tool="x_search")
+    assert resp.parsed_output["warnings"] == []
+
+
+def test_warnings_list_of_non_strings_coerced_to_str(
+    client: XAIClient, httpx_mock: HTTPXMock
+) -> None:
+    inner = json.dumps({"items": [], "warnings": ["ok", 42, None]})
+    payload = {
+        "model": "grok",
+        "output_text": inner,
+        "usage": {"input_tokens": 1, "output_tokens": 1, "tool_calls": 0},
+    }
+    httpx_mock.add_response(url=XAI_URL, json=payload)
+
+    resp = client.call("s", "u", tool="x_search")
+    assert resp.parsed_output["warnings"] == ["ok", "42", "None"]
