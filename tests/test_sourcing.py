@@ -726,3 +726,118 @@ def test_warnings_string_does_not_iterate_char_by_char(base_config, window):
     assert len(matching) == 1
     # Also assert no single-char warnings
     assert not any(len(w.split(": ", 1)[-1]) == 1 for w in result.warnings)
+
+
+# ---------------------------------------------------------------------------
+# Issue #19 partie 2 : dérivation de titre propre depuis content brut
+# ---------------------------------------------------------------------------
+
+
+def test_derive_title_strips_thread_marker_emoji():
+    from scripts.sourcing import _derive_title_from_content
+
+    title = _derive_title_from_content("🧵 Some interesting new research came out.")
+    assert title == "Some interesting new research came out."
+
+
+def test_derive_title_strips_thread_numbering():
+    from scripts.sourcing import _derive_title_from_content
+
+    title = _derive_title_from_content("1/12 New longitudinal study on NMN shows gains.")
+    assert title == "New longitudinal study on NMN shows gains."
+
+
+def test_derive_title_strips_combined_thread_markers():
+    """Cas réel santé observé : '🧵 1/12 ...' combine les deux."""
+    from scripts.sourcing import _derive_title_from_content
+
+    title = _derive_title_from_content(
+        "🧵 1/12 New longitudinal study on NMN shows significant biomarker improvements."
+    )
+    assert title.startswith("New longitudinal study on NMN")
+    assert "🧵" not in title
+    assert "1/12" not in title
+
+
+def test_derive_title_strips_trailing_url():
+    from scripts.sourcing import _derive_title_from_content
+
+    title = _derive_title_from_content("Interesting finding worth reading. https://t.co/abc123")
+    assert title == "Interesting finding worth reading."
+    assert "t.co" not in title
+    assert "http" not in title
+
+
+def test_derive_title_keeps_first_line_only_for_threads():
+    from scripts.sourcing import _derive_title_from_content
+
+    title = _derive_title_from_content(
+        "Main headline here.\n\nDetails and second paragraph here."
+    )
+    assert title == "Main headline here."
+
+
+def test_derive_title_truncates_at_sentence_boundary_when_long():
+    from scripts.sourcing import _derive_title_from_content
+
+    # Content > 160 chars : la 1re phrase seule fait ~120 char, la suite pousse
+    # le total au-delà → doit couper à la frontière de phrase.
+    content = (
+        "This is a reasonably long informative first sentence that stands on its own. "
+        "Additional commentary and detail and discussion follow in the second sentence and beyond, "
+        "and those details should not end up inside the title text."
+    )
+    assert len(content) > 160, "test fixture must exceed TITLE_MAX_CHARS"
+    title = _derive_title_from_content(content)
+    # Doit couper après la 1re phrase (frontière .), pas à 160 char brutaux
+    assert title == "This is a reasonably long informative first sentence that stands on its own."
+    assert title.endswith(".")
+
+
+def test_derive_title_hard_truncates_when_no_sentence_boundary():
+    from scripts.sourcing import _derive_title_from_content
+
+    content = "x" * 300
+    title = _derive_title_from_content(content)
+    assert len(title) <= 160
+    assert title == "x" * 160
+
+
+def test_derive_title_returns_placeholder_for_empty():
+    from scripts.sourcing import _derive_title_from_content
+
+    assert _derive_title_from_content("") == "(sans titre)"
+    assert _derive_title_from_content("   ") == "(sans titre)"
+    assert _derive_title_from_content("🧵") == "(sans titre)"
+
+
+def test_derive_title_preserves_short_content_as_is():
+    from scripts.sourcing import _derive_title_from_content
+
+    assert _derive_title_from_content("Short tweet.") == "Short tweet."
+
+
+def test_to_item_uses_derived_title_when_llm_omits(window):
+    """End-to-end : _to_item dérive le titre propre quand le LLM ne fournit
+    pas `title` et passe seulement content native xAI."""
+    from scripts.sourcing import _to_item
+
+    _, end = window
+    raw = {
+        "post_id": 1,
+        "author": "Peter Attia (@PeterAttiaMD)",
+        "content": "🧵 1/8 Here is what the latest research on fasting actually reveals. https://t.co/xyz",
+        "engagement": {"likes": 500, "reposts": 80},
+        "link": "https://x.com/PeterAttiaMD/status/1",
+    }
+    item = _to_item(
+        raw,
+        default_section_id="sante",
+        default_source_type="x_search",
+        fallback_published_at=end,
+    )
+    # Le titre est nettoyé : pas de 🧵, pas de 1/8, pas de t.co trailing
+    assert "🧵" not in item.title
+    assert "1/8" not in item.title
+    assert "t.co" not in item.title
+    assert item.title.startswith("Here is what the latest research")

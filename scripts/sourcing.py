@@ -35,6 +35,62 @@ logger = logging.getLogger(__name__)
 # "Financial Times (@FT)" → @FT ; retourne None si aucun @handle trouvé.
 _HANDLE_RE = re.compile(r"@[A-Za-z0-9_]{1,30}")
 
+# Nettoyage des titres dérivés de `content` quand le LLM ne synthétise pas
+# (issue #19 partie 2). Deux familles de bruit observées sur les posts X :
+# 1. Marqueurs de thread en tête : "🧵", "1/", "1/12", "1." etc.
+# 2. URLs t.co/... laissées en queue.
+_LEADING_NOISE_RE = re.compile(r"^\s*(?:🧵|\d+/(?:\d+)?|\d+[.)])\s*")
+_TRAILING_URL_RE = re.compile(r"\s+https?://\S+\s*$")
+
+# Cap titre : 160 chars = bonne densité mobile sans coupure brutale.
+_TITLE_MAX_CHARS = 160
+_TITLE_MIN_SENTENCE_CHARS = 40  # évite les phrases trop courtes
+_TITLE_MAX_SENTENCE_CHARS = 160
+_SENTENCE_BOUNDARY_RE = re.compile(
+    rf"^(.{{{_TITLE_MIN_SENTENCE_CHARS},{_TITLE_MAX_SENTENCE_CHARS}}}[.!?…])"
+)
+
+
+def _derive_title_from_content(content: str) -> str:
+    """
+    Dérive un titre lisible depuis le `content` brut d'un post X.
+
+    Fallback utilisé quand le LLM passe les résultats de tool en shape native
+    et ne synthétise pas de `title` (issue #19 partie 2). Les posts X santé/tech
+    commencent souvent par du bruit ("🧵 1/12 ...") et finissent par une URL
+    t.co — les deux sont retirés avant troncature.
+
+    Ordre de traitement :
+      1. Strip leading noise (jusqu'à 2 passes : "🧵 1/12 ..." → "...")
+      2. Garde première ligne uniquement
+      3. Strip trailing URL
+      4. Si > 160 chars : coupe à la frontière de phrase (.!?…) entre 40-160
+      5. Fallback hard truncation à 160 chars ou "(sans titre)" si vide
+    """
+    text = (content or "").strip()
+    if not text:
+        return "(sans titre)"
+
+    # 1. Strip leading noise (2 passes : "🧵 1/12" nécessite 2 itérations)
+    for _ in range(2):
+        stripped = _LEADING_NOISE_RE.sub("", text).strip()
+        if stripped == text:
+            break
+        text = stripped
+
+    # 2. Première ligne seulement (évite les threads multilignes)
+    text = text.split("\n", 1)[0].strip()
+
+    # 3. Strip trailing URL (t.co/... typique)
+    text = _TRAILING_URL_RE.sub("", text).strip()
+
+    # 4+5. Troncature : privilégier frontière de phrase, sinon hard cap
+    if len(text) > _TITLE_MAX_CHARS:
+        match = _SENTENCE_BOUNDARY_RE.match(text)
+        text = match.group(1) if match else text[:_TITLE_MAX_CHARS].rstrip()
+
+    return text or "(sans titre)"
+
 # Mapping tool → source_type par défaut quand le LLM n'en fournit pas (issue #17).
 _SOURCE_TYPE_BY_TOOL: dict[str, Literal["x_account", "x_search", "web"]] = {
     "x_search_accounts": "x_account",
@@ -438,11 +494,12 @@ def _to_item(
     likes = int(raw.get("likes", engagement.get("likes", 0)) or 0)
     reposts = int(raw.get("reposts", engagement.get("reposts", 0)) or 0)
 
-    # Title : explicit ou première ligne de `content`
+    # Title : explicit si fourni par le LLM, sinon dérivé du content brut
+    # via un helper qui nettoie le bruit courant (thread markers, trailing URLs).
+    # Voir _derive_title_from_content pour le détail (issue #19 partie 2).
     title = raw.get("title")
     if not isinstance(title, str) or not title.strip():
-        content = raw.get("content") or ""
-        title = content.split("\n", 1)[0][:200].strip() or "(sans titre)"
+        title = _derive_title_from_content(raw.get("content") or "")
 
     # Summary : explicit ou `content` (truncate pour budget rendu)
     summary = raw.get("summary") or raw.get("content") or title
