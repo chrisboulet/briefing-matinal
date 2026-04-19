@@ -1,19 +1,20 @@
-"""CLI orchestrateur du briefing. Voir PRD §S3 + PLAN Phase 1."""
+"""CLI orchestrateur du briefing. Voir PRD §S3 + PLAN Phase 1/3."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from scripts.config import ConfigError, config_hash, load_config
 from scripts.dedup import dedupe
 from scripts.fixture_loader import load_fixture
-from scripts.models import Briefing
+from scripts.models import Briefing, Item
 from scripts.render import RenderError, render
 from scripts.select import (
     apply_engagement_filter,
@@ -24,7 +25,9 @@ from scripts.select import (
 from scripts.window import briefing_id as compute_briefing_id
 from scripts.window import compute_window
 
-PROMPTS_VERSION = "phase-1-no-llm"
+# Bumper en cas de modification sémantique des prompts dans prompts/.
+# Le hash est injecté en footer du HTML rendu (traçabilité audit).
+PROMPTS_VERSION = "prompts-v1.0"
 
 
 def _git_commit() -> str:
@@ -43,7 +46,59 @@ def _parse_now(now_arg: str | None, fixture_meta: dict | None) -> datetime:
         return datetime.fromisoformat(now_arg)
     if fixture_meta and "now" in fixture_meta:
         return datetime.fromisoformat(fixture_meta["now"])
-    return datetime.now(tz=timezone.utc)
+    return datetime.now(tz=UTC)
+
+
+def _source_via_fixtures(
+    fixtures: list[Path],
+) -> tuple[list[Item], list[str], dict | None]:
+    """Charge des items depuis fixtures JSON (mode offline, Phase 1)."""
+    all_items: list[Item] = []
+    fixture_meta: dict | None = None
+    for fx in fixtures:
+        items, meta = load_fixture(fx)
+        all_items.extend(items)
+        if meta and fixture_meta is None:
+            fixture_meta = meta
+    return all_items, [], fixture_meta
+
+
+def _source_via_xai(
+    config: dict,
+    window_start: datetime,
+    window_end: datetime,
+) -> tuple[list[Item], list[str]]:
+    """
+    Charge des items via xAI Responses API (mode live, Phase 3).
+    Lazy import pour éviter dépendance httpx en mode fixture pur.
+    """
+    from scripts.sourcing import source_briefing
+    from scripts.xai_client import XAIClient
+
+    api_key = os.environ.get("XAI_API_KEY")
+    if not api_key:
+        raise ConfigError(
+            "Live mode requires XAI_API_KEY env var. "
+            "Use --fixture for offline mode."
+        )
+
+    model = os.environ.get("XAI_MODEL", "grok-4-1-fast-latest")
+    timeout_s = float(os.environ.get("XAI_TIMEOUT_S", "30"))
+
+    with XAIClient(api_key=api_key, model=model, timeout_s=timeout_s) as client:
+        result = source_briefing(client, config, window_start, window_end)
+
+    sys.stderr.write(json.dumps({
+        "event": "sourcing_total",
+        "items_raw": len(result.items),
+        "warnings_count": len(result.warnings),
+        "tokens_in": result.total_usage.input_tokens,
+        "tokens_out": result.total_usage.output_tokens,
+        "tool_calls": result.total_usage.tool_calls,
+        "cost_usd": round(result.total_usage.cost_usd, 4),
+    }) + "\n")
+
+    return result.items, result.warnings
 
 
 def build(
@@ -58,16 +113,16 @@ def build(
     sections_cfg = config["sections"]
     cfg_hash = config_hash(config_path)
 
-    all_items = []
     fixture_meta: dict | None = None
-    for fx in fixtures:
-        items, meta = load_fixture(fx)
-        all_items.extend(items)
-        if meta and fixture_meta is None:
-            fixture_meta = meta
-
-    if not fixtures:
-        raise ConfigError("Phase 1 requires at least one --fixture (live xAI mode = Phase 3)")
+    if fixtures:
+        # Mode offline (Phase 1) — fixtures fournies
+        all_items, source_warnings, fixture_meta = _source_via_fixtures(fixtures)
+    else:
+        # Mode live (Phase 3) — appels xAI réels
+        # On a besoin de la fenêtre AVANT le sourcing
+        now_for_window = _parse_now(now_override, None)
+        window_start_pre, window_end_pre = compute_window(moment, now_for_window)  # type: ignore[arg-type]
+        all_items, source_warnings = _source_via_xai(config, window_start_pre, window_end_pre)
 
     now = _parse_now(now_override, fixture_meta)
     window_start, window_end = compute_window(moment, now)  # type: ignore[arg-type]
@@ -81,7 +136,7 @@ def build(
     sixty_sec = select_sixty_seconds(sections, n=3)
     dont_miss = select_dont_miss(deduped, sections)
 
-    warnings: list[str] = []
+    warnings: list[str] = list(source_warnings)
     for sec in sections_cfg:
         if not sections.get(sec["id"]):
             warnings.append(f"section '{sec['id']}' vide")
@@ -89,7 +144,7 @@ def build(
     briefing = Briefing(
         briefing_id=bid,
         moment=moment,  # type: ignore[arg-type]
-        generated_at=datetime.now(tz=timezone.utc),
+        generated_at=datetime.now(tz=UTC),
         window_start=window_start,
         window_end=window_end,
         sixty_seconds=sixty_sec,
@@ -148,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
     except RenderError as e:
         print(f"render error: {e}", file=sys.stderr)
         return 1
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         print(f"unexpected error: {type(e).__name__}: {e}", file=sys.stderr)
         return 1
 

@@ -1,0 +1,44 @@
+# Task: web search within window for QC/Canada news
+
+Use the `web_search` tool to find articles published within the time window:
+- **From** (UTC): {{ window_start_iso }}
+- **To**   (UTC): {{ window_end_iso }}
+
+# Allowed domains (priority sources)
+{% for d in allowed_domains %}- {{ d }}
+{% endfor %}
+
+You MAY return articles from outside this list IF they cover Quebec/Canada politics, business, or major international news directly relevant to Christian. But prefer the listed domains when equivalent coverage exists.
+
+# Topics to surface (in order of priority)
+1. Quebec provincial politics + economy
+2. Canadian federal politics
+3. Major US politics (policy decisions, not horse-race)
+4. International events with significant impact (geopolitical, economic, scientific)
+5. Major business/M&A involving Canadian companies
+
+# Section assignment
+Each item MUST have a `section_id` from:
+{% for sid in section_ids %}- `{{ sid }}`
+{% endfor %}
+
+Most web items will be `politique` or `business`. Health-related news → `sante`. Tech announcements covered by mainstream media → `ai-tech`.
+
+# Source attribution
+- `source_handle`: the domain (e.g., `journaldequebec.com`, `lapresse.ca`)
+- `source_type`: always `"web"`
+- `likes` and `reposts`: always `0` for web items
+
+# Score (0.0-1.0)
+- 0.9-1.0: major event with clear local impact (QC budget, federal election announcement)
+- 0.7-0.9: solid news from priority domain
+- 0.5-0.7: secondary news
+- < 0.5: skip
+
+# Deduplication
+Wire stories often hit multiple outlets within minutes. If two articles cover the SAME event, return ONE (prefer the listed-domain version, then the most authoritative source). Let the caller deduplicate further.
+
+# Quantity
+Return up to {{ max_items_total }} items total. Filter aggressively for signal.
+
+Return JSON only.

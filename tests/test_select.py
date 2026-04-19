@@ -9,7 +9,6 @@ from scripts.select import (
     select_sixty_seconds,
 )
 
-
 SECTIONS_CFG = [
     {"id": "ai-tech", "label": "AI", "emoji": "🤖", "max_items": 2},
     {"id": "tesla", "label": "Tesla", "emoji": "🚗", "max_items": 1},
