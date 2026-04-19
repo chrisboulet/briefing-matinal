@@ -1,0 +1,239 @@
+{
+  "_meta": {
+    "description": "Fixture pour briefing matin du 2026-04-19. Couvre tous les sections et inclut 2 paires d'items dupliqués pour tester dedup.",
+    "now": "2026-04-19T06:44:30-04:00"
+  },
+  "items": [
+    {
+      "title": "Karpathy on agentic coding patterns",
+      "summary": "Long thread sur les patterns émergents en agentic coding et leurs implications design.",
+      "canonical_url": "https://x.com/karpathy/status/1814000000000000001",
+      "section_id": "ai-tech",
+      "source_type": "x_account",
+      "source_handle": "@karpathy",
+      "published_at": "2026-04-19T03:15:00Z",
+      "score": 0.92,
+      "likes": 4500,
+      "reposts": 820
+    },
+    {
+      "title": "Anthropic ships Claude 5.0 with extended context",
+      "summary": "Annonce officielle: 2M tokens context, latence réduite de 40%, prix stable.",
+      "canonical_url": "https://x.com/AnthropicAI/status/1814000000000000002",
+      "section_id": "ai-tech",
+      "source_type": "x_account",
+      "source_handle": "@AnthropicAI",
+      "published_at": "2026-04-18T22:00:00Z",
+      "score": 0.95,
+      "likes": 12000,
+      "reposts": 3400
+    },
+    {
+      "title": "OpenAI release: GPT-5 Multi tool",
+      "summary": "Nouveau mode multi-tool concurrent, approche similaire au flow Anthropic.",
+      "canonical_url": "https://x.com/OpenAI/status/1814000000000000003",
+      "section_id": "ai-tech",
+      "source_type": "x_account",
+      "source_handle": "@OpenAI",
+      "published_at": "2026-04-19T01:30:00Z",
+      "score": 0.78,
+      "likes": 8900,
+      "reposts": 1200
+    },
+    {
+      "title": "Daniel Miessler: AI alignment, the 2026 take",
+      "summary": "Essai sur l'évolution du discours alignment depuis 2024.",
+      "canonical_url": "https://danielmiessler.com/blog/ai-alignment-2026",
+      "section_id": "ai-tech",
+      "source_type": "x_account",
+      "source_handle": "@DanielMiessler",
+      "published_at": "2026-04-19T04:45:00Z",
+      "score": 0.71,
+      "likes": 980,
+      "reposts": 145
+    },
+    {
+      "title": "Cybertruck production hits 250k unit milestone",
+      "summary": "Tesla franchit le cap des 250k Cybertrucks produits depuis le lancement.",
+      "canonical_url": "https://x.com/cernbasher/status/1814000000000000010",
+      "section_id": "tesla",
+      "source_type": "x_account",
+      "source_handle": "@cernbasher",
+      "published_at": "2026-04-19T02:10:00Z",
+      "score": 0.84,
+      "likes": 5600,
+      "reposts": 920
+    },
+    {
+      "title": "FSD v14 broader rollout begins this week",
+      "summary": "Tesla démarre rollout FSD v14 sur l'ensemble du parc HW4 en NA.",
+      "canonical_url": "https://x.com/WholeMarsBlog/status/1814000000000000011",
+      "section_id": "tesla",
+      "source_type": "x_account",
+      "source_handle": "@WholeMarsBlog",
+      "published_at": "2026-04-19T05:00:00Z",
+      "score": 0.88,
+      "likes": 7200,
+      "reposts": 1500
+    },
+    {
+      "title": "Tesla FSD v14 deploys broadly",
+      "summary": "Recherche thématique Tesla retourne le même événement sous un titre différent (test dedup).",
+      "canonical_url": "https://x.com/WholeMarsBlog/status/1814000000000000011?utm_source=share&s=20",
+      "section_id": "tesla",
+      "source_type": "x_search",
+      "source_handle": "Tesla (search)",
+      "published_at": "2026-04-19T05:00:00Z",
+      "score": 0.80,
+      "likes": 7200,
+      "reposts": 1500
+    },
+    {
+      "title": "Starship launch 18 scheduled for Saturday",
+      "summary": "SpaceX confirme la fenêtre de lancement Starship Flight 18 pour samedi 21h ET.",
+      "canonical_url": "https://x.com/SpaceX/status/1814000000000000020",
+      "section_id": "spacex",
+      "source_type": "x_account",
+      "source_handle": "@SpaceX",
+      "published_at": "2026-04-18T20:00:00Z",
+      "score": 0.91,
+      "likes": 25000,
+      "reposts": 5800
+    },
+    {
+      "title": "Starlink V3 sats: 60 launched overnight",
+      "summary": "60 satellites V3 déployés cette nuit depuis Vandenberg, capacité +35%.",
+      "canonical_url": "https://x.com/SpaceX/status/1814000000000000021",
+      "section_id": "spacex",
+      "source_type": "x_account",
+      "source_handle": "@SpaceX",
+      "published_at": "2026-04-19T02:30:00Z",
+      "score": 0.69,
+      "likes": 6500,
+      "reposts": 980
+    },
+    {
+      "title": "Sinclair: NMN longitudinal trial 2-year results",
+      "summary": "Étude 2 ans sur 800 sujets, marqueurs biologiques améliorés sur 6 axes.",
+      "canonical_url": "https://x.com/davidasinclair/status/1814000000000000030",
+      "section_id": "sante",
+      "source_type": "x_account",
+      "source_handle": "@davidasinclair",
+      "published_at": "2026-04-18T23:45:00Z",
+      "score": 0.86,
+      "likes": 11000,
+      "reposts": 2100
+    },
+    {
+      "title": "Attia: practical Zone 2 protocol update",
+      "summary": "Refonte du protocole Zone 2 basée sur 18 mois de données patients.",
+      "canonical_url": "https://x.com/PeterAttiaMD/status/1814000000000000031",
+      "section_id": "sante",
+      "source_type": "x_account",
+      "source_handle": "@PeterAttiaMD",
+      "published_at": "2026-04-19T04:00:00Z",
+      "score": 0.74,
+      "likes": 4300,
+      "reposts": 580
+    },
+    {
+      "title": "Legault annonce un budget supplémentaire en santé",
+      "summary": "Le gouvernement du Québec ajoute 2,3 G$ au budget santé pour l'exercice en cours.",
+      "canonical_url": "https://www.journaldequebec.com/2026/04/19/budget-supplementaire-sante-2026",
+      "section_id": "politique",
+      "source_type": "web",
+      "source_handle": "journaldequebec.com",
+      "published_at": "2026-04-19T05:30:00Z",
+      "score": 0.81
+    },
+    {
+      "title": "Trump signs executive order on AI export controls",
+      "summary": "Décret signé hier soir restreignant l'export de GPU H300+ vers 12 pays.",
+      "canonical_url": "https://www.lapresse.ca/international/2026-04-19/trump-ai-export.php",
+      "section_id": "politique",
+      "source_type": "web",
+      "source_handle": "lapresse.ca",
+      "published_at": "2026-04-18T23:00:00Z",
+      "score": 0.89
+    },
+    {
+      "title": "Tensions Taiwan: nouveau survol PLAAF",
+      "summary": "12 appareils PLAAF traversent la ligne médiane, plus haute fréquence depuis février.",
+      "canonical_url": "https://www.lapresse.ca/international/2026-04-19/taiwan-survol.php",
+      "section_id": "politique",
+      "source_type": "web",
+      "source_handle": "lapresse.ca",
+      "published_at": "2026-04-19T01:15:00Z",
+      "score": 0.72
+    },
+    {
+      "title": "TSX clôture en hausse de 1.2%, énergie en tête",
+      "summary": "Indice composé TSX +1.2% sur la séance, secteur énergie tire la performance.",
+      "canonical_url": "https://www.lesaffaires.com/marches/tsx-cloture-2026-04-18",
+      "section_id": "business",
+      "source_type": "web",
+      "source_handle": "lesaffaires.com",
+      "published_at": "2026-04-18T21:30:00Z",
+      "score": 0.65
+    },
+    {
+      "title": "BCE rachète Distributel pour 1,8 G$",
+      "summary": "Acquisition annoncée hier soir, attend approbation CRTC.",
+      "canonical_url": "https://www.lesaffaires.com/entreprises/bce-distributel-2026",
+      "section_id": "business",
+      "source_type": "web",
+      "source_handle": "lesaffaires.com",
+      "published_at": "2026-04-19T02:00:00Z",
+      "score": 0.77
+    },
+    {
+      "title": "Diary of a CEO: full episode with Naval Ravikant on personal leverage",
+      "summary": "Épisode 90 minutes, focus sur leverage, distribution, et longévité de carrière.",
+      "canonical_url": "https://www.youtube.com/watch?v=abc123naval2026",
+      "section_id": "business",
+      "source_type": "x_account",
+      "source_handle": "@DiaryOfACEO",
+      "published_at": "2026-04-18T18:00:00Z",
+      "score": 0.83,
+      "likes": 8400,
+      "reposts": 1100
+    },
+    {
+      "title": "Cleo Abram: how do reactors actually work?",
+      "summary": "Vidéo 12 min sur le fonctionnement réel des réacteurs nucléaires modernes.",
+      "canonical_url": "https://www.youtube.com/watch?v=def456cleo2026",
+      "section_id": "ai-tech",
+      "source_type": "x_account",
+      "source_handle": "@CleoAbram",
+      "published_at": "2026-04-18T19:30:00Z",
+      "score": 0.79,
+      "likes": 14000,
+      "reposts": 2800
+    },
+    {
+      "title": "Spam meme post low engagement",
+      "summary": "Devrait être filtré par engagement_min (likes 12, reposts 1).",
+      "canonical_url": "https://x.com/JDeQuebec/status/1814000000000000099",
+      "section_id": "politique",
+      "source_type": "x_account",
+      "source_handle": "@JDeQuebec",
+      "published_at": "2026-04-19T05:55:00Z",
+      "score": 0.30,
+      "likes": 12,
+      "reposts": 1
+    },
+    {
+      "title": "Reply post to be filtered out",
+      "summary": "is_reply=true devrait sortir du pool.",
+      "canonical_url": "https://x.com/karpathy/status/1814000000000000100",
+      "section_id": "ai-tech",
+      "source_type": "x_account",
+      "source_handle": "@karpathy",
+      "published_at": "2026-04-19T05:50:00Z",
+      "score": 0.40,
+      "likes": 200,
+      "reposts": 30,
+      "is_reply": true
+    }
+  ]
+}
