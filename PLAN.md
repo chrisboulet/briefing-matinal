@@ -135,7 +135,7 @@ dev = [
 | `scripts/config.py` | Chargement + validation de `comptes.json` contre le schema |
 | `scripts/window.py` | Calcul des fenêtres temporelles matin/soir (pure function) |
 | `scripts/dedup.py` | Logique de dédup (URL canonique + hash titre) |
-| `scripts/select.py` | Sélection `max_items` par section + sections "hero" (60s, dont_miss) |
+| `scripts/select.py` | Sélection `max_items` par section + sélection "À ne pas manquer" |
 | `scripts/render.py` | Wrapper Jinja2 autour de `templates/briefing.html` |
 | `scripts/build_briefing.py` | Entrée CLI avec `argparse`, orchestrateur |
 | `tests/fixtures/x_search_sample.json` | ~30 posts X fake répartis sur tous les comptes/thèmes |
@@ -157,7 +157,7 @@ Comportement :
 2. Charge les fixtures comme si c'étaient des retours xAI
 3. Applique filtres qualité (engagement min, exclure replies, etc.)
 4. Dédup
-5. Sélectionne `max_items` par section + 3 items "60 secondes" + 1 "à ne pas manquer"
+5. Sélectionne `max_items` par section + 1 item "À ne pas manquer"
 6. Rend le HTML via Jinja2 (template placeholder OK à ce stade)
 7. Écrit `output/YYYY-MM-DD-matin.html`
 8. Print JSON stdout : `{"status": "ok", "path": "...", "briefing_id": "...", "items_count": N}`
@@ -202,7 +202,7 @@ Comportement :
 | Fichier | Rôle |
 |---|---|
 | `templates/briefing.html` | Template Jinja2 final |
-| `templates/partials/_item.html` | Macro `render_item(item, hero=False)` — réutilisée pour 60s, sections, dont_miss |
+| `templates/partials/_item.html` | Macro `render_item(item, hero=False)` — réutilisée pour sections et dont_miss |
 | `scripts/render.py` (update) | Ajout validation taille + regex anti-CDN |
 | `tests/test_render.py` | 15 tests structuraux sur le HTML produit |
 
@@ -223,11 +223,6 @@ Comportement :
 <header>
   ☀️ BRIEFING MATIN — vendredi 19 avril 2026
 </header>
-
-<section class="sixty-seconds">
-  ⚡ EN 60 SECONDES
-  [3 items en style compact "bullet-like"]
-</section>
 
 <section class="standard" id="ai-tech">
   🤖 AI / Tech

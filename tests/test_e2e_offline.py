@@ -21,7 +21,7 @@ def test_e2e_matin_with_fixture(tmp_path: Path):
     assert html_path.exists()
     html = html_path.read_text(encoding="utf-8")
     assert "BRIEFING MATIN" in html
-    assert "EN 60 SECONDES" in html
+    assert "EN 60 SECONDES" not in html  # retiré via issue #22
 
 
 def test_e2e_idempotence(tmp_path: Path):

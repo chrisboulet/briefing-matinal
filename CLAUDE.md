@@ -39,7 +39,7 @@ briefing-matinal/
 │   ├── config.py                   # load_config + schema validation
 │   ├── window.py                   # Fenêtres matin/soir America/Toronto
 │   ├── dedup.py                    # canonical_url + title hash
-│   ├── select.py                   # quotas par section + 60s + dont_miss
+│   ├── select.py                   # quotas par section + dont_miss
 │   ├── render.py                   # Jinja2 + validation taille/CDN
 │   ├── xai_client.py               # httpx wrapper Responses API + retry
 │   ├── sourcing.py                 # orchestrateur appels xAI
@@ -54,7 +54,7 @@ briefing-matinal/
 
 **Flux exécution** :
 
-`comptes.json` → `build_briefing.py --moment {matin|soir}` → soit `fixture_loader` (offline) soit `sourcing.source_briefing(XAIClient)` (live, appels parallèles `x_search`/`web_search` via Responses API) → filtres engagement + fenêtre → `dedup` → `select` (quotas + 60s + dont_miss) → `render` Jinja → HTML standalone dans `output/YYYY-MM-DD-{matin|soir}.html` + JSON stdout pour hermes-agent.
+`comptes.json` → `build_briefing.py --moment {matin|soir}` → soit `fixture_loader` (offline) soit `sourcing.source_briefing(XAIClient)` (live, appels parallèles `x_search`/`web_search` via Responses API) → filtres engagement + fenêtre → `dedup` → `select` (quotas par section + dont_miss) → `render` Jinja → HTML standalone dans `output/YYYY-MM-DD-{matin|soir}.html` + JSON stdout pour hermes-agent.
 
 ## Commandes courantes
 

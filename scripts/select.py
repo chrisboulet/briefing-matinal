@@ -1,4 +1,4 @@
-"""Sélection finale par section + sections hero (60s, dont_miss). Voir PRD §S1.bis."""
+"""Sélection finale par section + dont_miss. Voir PRD §S1.bis."""
 
 from __future__ import annotations
 
@@ -28,35 +28,6 @@ def select_by_section(
         max_items = section["max_items"]
         out[sid] = by_section[sid][:max_items]
     return out
-
-
-def select_sixty_seconds(
-    selected: dict[str, list[Item]],
-    n: int = 3,
-) -> list[Item]:
-    """
-    3 items 'EN 60 SECONDES' choisis parmi l'union de toutes les sections.
-    Critère V1 : top par score, en privilégiant la diversité de sections (1 par section idéalement).
-    """
-    pool: list[Item] = [it for items in selected.values() for it in items]
-    pool.sort(key=lambda x: (-x.score, -x.published_at.timestamp(), x.id))
-
-    chosen: list[Item] = []
-    seen_sections: set[str] = set()
-
-    for it in pool:
-        if it.section_id not in seen_sections:
-            chosen.append(it)
-            seen_sections.add(it.section_id)
-            if len(chosen) == n:
-                return chosen
-
-    for it in pool:
-        if it not in chosen:
-            chosen.append(it)
-            if len(chosen) == n:
-                break
-    return chosen
 
 
 def select_dont_miss(
