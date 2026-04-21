@@ -9,7 +9,7 @@ Le briefing utilise **xAI Grok via la Responses API** (`POST https://api.x.ai/v1
 | Quoi | Valeur |
 |---|---|
 | Endpoint | `POST https://api.x.ai/v1/responses` |
-| Modèle V1 | `grok-4-1-fast-non-reasoning` (escalade possible vers `-reasoning` puis `grok-4.20-0309-reasoning` si qualité insuffisante) |
+| Modèle V1 | `grok-4-1-fast-reasoning` (escalade possible vers `grok-4.20-0309-reasoning` si qualité insuffisante) |
 | Auth | `Authorization: Bearer ${XAI_API_KEY}` |
 | Tools | `x_search`, `web_search` (server-side, intégrés xAI) |
 | Output format | `response_format: json_schema` (forçage JSON valide) |

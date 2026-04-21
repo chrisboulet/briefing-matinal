@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 # Bumper en cas de modification sémantique des prompts dans prompts/.
 # Le hash est injecté en footer du HTML rendu (traçabilité audit).
 # v1.1 : ajout de prompts/enrich.txt (2e passe — issue #25).
-PROMPTS_VERSION = "prompts-v1.1"
+PROMPTS_VERSION = "prompts-v1.2"
 
 # Kill switch pour l'enrichissement 2e passe (issue #25).
 # Exporter `BRIEFING_ENRICH=0` pour désactiver. Défaut "1" = actif en mode live.
