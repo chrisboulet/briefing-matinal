@@ -78,7 +78,12 @@
     {"theme": "Cybersécurité", "query": "cybersecurity breach ransomware threat vulnerability CISO incident CVE exploit", "section_id": "cybersec"},
     {"theme": "Leadership", "query": "CTO engineering management culture team strategy executive leadership startup", "section_id": "leadership"},
     {"theme": "Futur du travail", "query": "future of work automation AI jobs workforce productivity remote hybrid transformation", "section_id": "futur-travail"},
-    {"theme": "Futur du travail 2", "query": "AI productivity tools knowledge worker augmentation skills reskilling automation jobs", "section_id": "futur-travail"}
+    {"theme": "Futur du travail 2", "query": "AI productivity tools knowledge worker augmentation skills reskilling automation jobs", "section_id": "futur-travail"},
+    {"theme": "Reddit AI", "query": "site:reddit.com/r/artificial OR site:reddit.com/r/MachineLearning OR site:reddit.com/r/LocalLLaMA AI LLM agent", "section_id": "ai-tech"},
+    {"theme": "Reddit Cybersec", "query": "site:reddit.com/r/cybersecurity OR site:reddit.com/r/netsec breach vulnerability threat incident", "section_id": "cybersec"},
+    {"theme": "Reddit Leadership", "query": "site:reddit.com/r/ExperiencedDevs OR site:reddit.com/r/cto OR site:reddit.com/r/engineering management leadership team culture", "section_id": "leadership"},
+    {"theme": "Reddit Gouvernance AI", "query": "site:reddit.com/r/AIPolicy OR site:reddit.com/r/artificial AI regulation ethics policy governance", "section_id": "gouvernance"},
+    {"theme": "Reddit Futur Travail", "query": "site:reddit.com/r/Futurology OR site:reddit.com/r/automate AI jobs automation future work productivity", "section_id": "futur-travail"}
   ],
   "sources_web": [
     "journaldequebec.com",
@@ -102,7 +107,8 @@
     "euractiv.com",
     "darkreading.com",
     "bleepingcomputer.com",
-    "stratechery.com"
+    "stratechery.com",
+    "reddit.com"
   ],
   "sections": [
     {"id": "ai-tech",       "label": "AI / Tech",             "emoji": "🤖", "max_items": 6},
