@@ -17,8 +17,10 @@ Conception :
 from __future__ import annotations
 
 import logging
+import os
 import re
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -118,6 +120,25 @@ DEFAULT_MAX_WEB_TOTAL = 8
 THEME_BUFFER = 2  # max_items section + 2 pour laisser le dedupe respirer
 
 
+def _max_concurrent_calls_from_env() -> int:
+    raw = os.getenv("BRIEFING_XAI_MAX_CONCURRENT_CALLS", "5")
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "BRIEFING_XAI_MAX_CONCURRENT_CALLS invalide (%r), fallback à 5",
+            raw,
+        )
+        return 5
+    return max(1, min(value, 10))
+
+
+# Parallélisme : nombre max d'appels xAI simultanés.
+# Configurable pour ajuster rapidement si xAI rate-limit en prod.
+# Défaut conservateur pour le premier déploiement de l'expansion des sources.
+MAX_CONCURRENT_CALLS = _max_concurrent_calls_from_env()
+
+
 # ---------------------------------------------------------------------------
 # Types de retour
 # ---------------------------------------------------------------------------
@@ -186,14 +207,17 @@ def source_briefing(
     warnings: list[str] = []
     total_usage = XAIUsage(input_tokens=0, output_tokens=0, tool_calls=0)
 
-    # -- 1. Comptes X surveillés (batchs de MAX_HANDLES_PER_CALL) ----------
+    # -- Construire toutes les specs d'appels --------------------------------
+    # Chaque spec est un dict de kwargs pour _do_call. On les accumule tous
+    # avant d'exécuter, puis on les lance en parallèle via ThreadPoolExecutor.
+    call_specs: list[dict[str, Any]] = []
+
+    # 1. Comptes X surveillés (batchs de MAX_HANDLES_PER_CALL)
     handles_all = config["comptes_x"]
     batches = list(_chunk(handles_all, MAX_HANDLES_PER_CALL))
     for batch_idx, batch in enumerate(batches, start=1):
-        # `allowed_x_handles` attend des handles SANS le `@` initial.
         bare_handles = [h.lstrip("@") for h in batch]
         prompt_label = f"search_accounts_{batch_idx}"
-
         user_prompt = _render_prompt(
             env,
             "search_accounts.txt",
@@ -206,41 +230,26 @@ def source_briefing(
                 "max_items_total": min(DEFAULT_MAX_ACCOUNTS_TOTAL, max_items_per_call),
             },
         )
-
-        tool_params = {
-            "allowed_x_handles": bare_handles,
-            "from_date": from_date,
-            "to_date": to_date,
-        }
-
-        new_items, new_warnings, new_usage = _do_call(
+        call_specs.append(dict(
             client=client,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             tool="x_search",
-            tool_params=tool_params,
+            tool_params={"allowed_x_handles": bare_handles, "from_date": from_date, "to_date": to_date},
             prompt_label=prompt_label,
             window_start=window_start,
             window_end=window_end,
             valid_section_ids=valid_section_ids,
             default_source_type="x_account",
-            # Pas de default_section_id pour accounts : le LLM doit classer
-            # chaque post selon son topic. Items sans section_id sont dropped.
-        )
-        items.extend(new_items)
-        warnings.extend(new_warnings)
-        total_usage = _add_usage(total_usage, new_usage)
+        ))
 
-    # -- 2. Recherches X thématiques (1 appel / thème) ---------------------
+    # 2. Recherches X thématiques (1 spec / thème)
     for theme_cfg in config["recherches_thematiques"]:
         section_id = theme_cfg["section_id"]
         section = sections_by_id.get(section_id)
-        # Defensive: section_id devrait être validé par config.load_config(),
-        # mais on garde un fallback raisonnable.
         section_max = section["max_items"] if section else 3
         max_items = min(section_max + THEME_BUFFER, max_items_per_call)
         prompt_label = f"search_theme_{theme_cfg['theme']}"
-
         user_prompt = _render_prompt(
             env,
             "search_theme.txt",
@@ -254,38 +263,25 @@ def source_briefing(
                 "max_items": max_items,
             },
         )
-
-        tool_params = {
-            "from_date": from_date,
-            "to_date": to_date,
-        }
-        # NB: pas de allowed_x_handles ici — c'est une recherche libre.
-
-        new_items, new_warnings, new_usage = _do_call(
+        call_specs.append(dict(
             client=client,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             tool="x_search",
-            tool_params=tool_params,
+            tool_params={"from_date": from_date, "to_date": to_date},
             prompt_label=prompt_label,
             window_start=window_start,
             window_end=window_end,
             valid_section_ids=valid_section_ids,
-            default_section_id=section_id,  # theme → section fixe
+            default_section_id=section_id,
             default_source_type="x_search",
-        )
-        items.extend(new_items)
-        warnings.extend(new_warnings)
-        total_usage = _add_usage(total_usage, new_usage)
+        ))
 
-    # -- 3. Recherche web (batchs de MAX_DOMAINS_PER_CALL, issue #31) ------
-    # xAI web_search plafonne à 5 domaines par appel. Même pattern que les
-    # comptes X (max 10) : on splitte en batches. N domaines / 5 → ceil appels.
+    # 3. Recherche web (batchs de MAX_DOMAINS_PER_CALL)
     sources_web_all = config["sources_web"]
     web_batches = list(_chunk(sources_web_all, MAX_DOMAINS_PER_CALL))
     for batch_idx, domains_batch in enumerate(web_batches, start=1):
         prompt_label = f"search_web_{batch_idx}"
-
         web_user_prompt = _render_prompt(
             env,
             "search_web.txt",
@@ -297,33 +293,39 @@ def source_briefing(
                 "max_items_total": min(DEFAULT_MAX_WEB_TOTAL, max_items_per_call),
             },
         )
-
-        # TODO(live): verify web_search params — la doc xAI accessible ne fige
-        # pas le nom exact du champ (`allowed_domains` vs `domains` vs autre)
-        # ni la prise en charge de `from_date`/`to_date` côté tool.
-        web_tool_params = {
-            "allowed_domains": domains_batch,
-            "from_date": from_date,
-            "to_date": to_date,
-        }
-
-        new_items, new_warnings, new_usage = _do_call(
+        call_specs.append(dict(
             client=client,
             system_prompt=system_prompt,
             user_prompt=web_user_prompt,
             tool="web_search",
-            tool_params=web_tool_params,
+            tool_params={
+                "allowed_domains": domains_batch,
+                "from_date": from_date,
+                "to_date": to_date,
+            },
             prompt_label=prompt_label,
             window_start=window_start,
             window_end=window_end,
             valid_section_ids=valid_section_ids,
             default_source_type="web",
-            # Web : le LLM classe, pas de default_section_id (articles couvrent
-            # politique, business, santé, etc.). Items sans section_id dropped.
-        )
-        items.extend(new_items)
-        warnings.extend(new_warnings)
-        total_usage = _add_usage(total_usage, new_usage)
+        ))
+
+    # -- Exécuter tous les appels en parallèle --------------------------------
+    logger.info(
+        "sourcing: %d appels xAI en parallèle (max %d workers)",
+        len(call_specs),
+        MAX_CONCURRENT_CALLS,
+    )
+    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_CALLS) as executor:
+        futures = {
+            executor.submit(_do_call, **spec): spec["prompt_label"]
+            for spec in call_specs
+        }
+        for future in as_completed(futures):
+            new_items, new_warnings, new_usage = future.result()
+            items.extend(new_items)
+            warnings.extend(new_warnings)
+            total_usage = _add_usage(total_usage, new_usage)
 
     return SourcingResult(items=items, warnings=warnings, total_usage=total_usage)
 
