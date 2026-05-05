@@ -58,6 +58,56 @@ def test_dedup_unrelated_items_pass(make_item):
     assert len(out) == 2
 
 
+def test_dedup_fuzzy_gamestop_ebay(make_item):
+    """Issue #35 : quasi-duplicates couvrant la même histoire doivent être consolidés."""
+    a = make_item(
+        "GameStop offers $56B to acquire eBay",
+        "https://example.com/gamestop-1",
+        section_id="business",
+        score=0.85,
+    )
+    b = make_item(
+        "GameStop CEO offers $56 billion for eBay",
+        "https://example.com/gamestop-2",
+        section_id="business",
+        score=0.75,
+    )
+    result = dedupe([a, b])
+    assert len(result) == 1
+    assert result[0].score == 0.85
+
+
+def test_dedup_fuzzy_does_not_merge_distinct_events(make_item):
+    """Deux items partageant un acteur mais couvrant des événements distincts restent séparés."""
+    a = make_item(
+        "Tesla FSD v14 rollout next week",
+        "https://example.com/tesla-fsd",
+        section_id="tesla",
+        score=0.8,
+    )
+    b = make_item(
+        "Tesla recalls vehicles for brake failure",
+        "https://example.com/tesla-recall",
+        section_id="tesla",
+        score=0.75,
+    )
+    result = dedupe([a, b])
+    assert len(result) == 2
+
+
+def test_dedup_fuzzy_does_not_merge_distinct_numeric_events(make_item):
+    """Les nombres distinctifs (versions, trimestres, modèles) empêchent la fusion fuzzy."""
+    pairs = [
+        ("OpenAI releases GPT-5", "OpenAI releases GPT-6"),
+        ("Tesla FSD v14 rollout next week", "Tesla FSD v15 rollout next week"),
+        ("Tesla reports Q1 earnings", "Tesla reports Q2 earnings"),
+    ]
+    for idx, (left, right) in enumerate(pairs):
+        a = make_item(left, f"https://example.com/numeric-{idx}-a", score=0.8)
+        b = make_item(right, f"https://example.com/numeric-{idx}-b", score=0.75)
+        assert len(dedupe([a, b])) == 2
+
+
 def test_dedup_stable_order(make_item):
     items = [
         make_item("A", "https://example.com/a", score=0.5, published="2026-04-19T01:00:00Z"),

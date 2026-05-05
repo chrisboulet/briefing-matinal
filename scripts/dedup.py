@@ -24,6 +24,18 @@ _KEEP_PARAMS = {
 
 _PUNCT_RE = re.compile(r"[^\w\s]+", re.UNICODE)
 _WS_RE = re.compile(r"\s+")
+_MONEY_B_SUFFIX_RE = re.compile(r"\b(\d+(?:\.\d+)?)\s*b\b", re.IGNORECASE)
+_MONEY_B_WORD_RE = re.compile(r"\b(\d+(?:\.\d+)?)\s*billion\b", re.IGNORECASE)
+
+# Mots vides FR + EN supprimés avant calcul de similarité Jaccard.
+_STOPWORDS = frozenset({
+    "a", "an", "the", "of", "in", "at", "by", "to", "for", "is", "it",
+    "its", "on", "as", "or", "and", "with", "that", "this", "from",
+    "de", "du", "le", "la", "les", "un", "une", "des", "en", "et",
+    "au", "aux", "par", "sur", "pour", "que", "qui",
+})
+
+_FUZZY_THRESHOLD = 0.5
 
 
 def canonical_url(url: str) -> str:
@@ -52,6 +64,35 @@ def title_hash(title: str) -> str:
     return hashlib.sha1(norm[:200].encode("utf-8")).hexdigest()
 
 
+def _normalize_numeric_phrases(title: str) -> str:
+    """Normalise les montants fréquents pour comparer des titres quasi identiques."""
+    text = title.lower()
+    text = _MONEY_B_WORD_RE.sub(r" money_\1_billion ", text)
+    return _MONEY_B_SUFFIX_RE.sub(r" money_\1_billion ", text)
+
+
+def _title_tokens(title: str) -> frozenset[str]:
+    """Tokens normalisés pour similarité Jaccard : lowercase, stopwords retirés."""
+    text = _PUNCT_RE.sub(" ", _normalize_numeric_phrases(title))
+    return frozenset(t for t in _WS_RE.split(text) if len(t) > 1 and t not in _STOPWORDS)
+
+
+def _numeric_markers(title: str) -> frozenset[str]:
+    """Marqueurs numériques conservés pour éviter de fusionner GPT-5/GPT-6, Q1/Q2, v14/v15."""
+    text = _PUNCT_RE.sub(" ", _normalize_numeric_phrases(title))
+    return frozenset(t for t in _WS_RE.split(text) if any(ch.isdigit() for ch in t))
+
+
+def _numeric_markers_compatible(a: frozenset[str], b: frozenset[str]) -> bool:
+    """Autorise la fusion sauf si les deux titres portent des nombres contradictoires."""
+    return not (a and b and a != b)
+
+
+def _jaccard(a: frozenset[str], b: frozenset[str]) -> float:
+    union = len(a | b)
+    return len(a & b) / union if union else 0.0
+
+
 def item_id(canonical: str) -> str:
     """ID stable d'un item à partir de son URL canonique."""
     return hashlib.sha1(canonical.encode("utf-8")).hexdigest()[:12]
@@ -59,7 +100,11 @@ def item_id(canonical: str) -> str:
 
 def dedupe(items: list[Item]) -> list[Item]:
     """
-    Dédup par URL canonique en priorité, puis par hash titre.
+    Dédup en trois passes :
+    1. URL canonique exacte
+    2. Hash titre normalisé exact
+    3. Similarité Jaccard sur tokens de titre (seuil 0.5) — capture quasi-duplicates
+       comme « GameStop offers $56B to acquire eBay » / « GameStop CEO offers $56 billion for eBay ».
     Garde l'item avec le score le plus élevé ; les autres sources passent dans alt_sources.
     Tri stable final : score DESC, published_at DESC, id ASC.
     """
@@ -83,6 +128,23 @@ def dedupe(items: list[Item]) -> list[Item]:
         winner, loser = (it, existing) if it.score > existing.score else (existing, it)
         by_title[key] = replace(winner, alt_sources=(*winner.alt_sources, loser.source_handle))
 
-    deduped = list(by_title.values())
-    deduped.sort(key=lambda x: (-x.score, -x.published_at.timestamp(), x.id))
-    return deduped
+    # Passe 3 : quasi-duplicates par similarité Jaccard sur tokens de titre.
+    fuzzy: list[Item] = []
+    for it in by_title.values():
+        tokens_it = _title_tokens(it.title)
+        markers_it = _numeric_markers(it.title)
+        merged = False
+        for i, existing in enumerate(fuzzy):
+            markers_existing = _numeric_markers(existing.title)
+            if not _numeric_markers_compatible(markers_it, markers_existing):
+                continue
+            if _jaccard(tokens_it, _title_tokens(existing.title)) >= _FUZZY_THRESHOLD:
+                winner, loser = (it, existing) if it.score > existing.score else (existing, it)
+                fuzzy[i] = replace(winner, alt_sources=(*winner.alt_sources, loser.source_handle))
+                merged = True
+                break
+        if not merged:
+            fuzzy.append(it)
+
+    fuzzy.sort(key=lambda x: (-x.score, -x.published_at.timestamp(), x.id))
+    return fuzzy

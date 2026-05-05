@@ -87,7 +87,7 @@ Le LLM (xAI Grok) reçoit pour chaque appel un prompt structuré. Les templates 
 
 **Sélection "À NE PAS MANQUER"** : 1 item par briefing, choisi dans l'union des items *non retenus* par les sections (pour éviter la redondance). Privilégier : vidéo longue (si matin = queue de la journée) ou thread analytique (si soir = lecture de soirée).
 
-> Note : la section "EN 60 SECONDES" initialement prévue a été retirée via l'[issue #22](https://github.com/chrisboulet/briefing-matinal/issues/22) — redondante avec les sections thématiques et "À NE PAS MANQUER".
+> Note : la section de synthèse express initialement prévue a été retirée via l'[issue #22](https://github.com/chrisboulet/briefing-matinal/issues/22) — redondante avec les sections thématiques et "À NE PAS MANQUER".
 
 ### S2 — Compilation HTML
 
