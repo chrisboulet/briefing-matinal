@@ -17,6 +17,7 @@ Conception :
 from __future__ import annotations
 
 import logging
+import os
 import re
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -118,9 +119,24 @@ DEFAULT_MAX_ACCOUNTS_TOTAL = 12
 DEFAULT_MAX_WEB_TOTAL = 8
 THEME_BUFFER = 2  # max_items section + 2 pour laisser le dedupe respirer
 
+
+def _max_concurrent_calls_from_env() -> int:
+    raw = os.getenv("BRIEFING_XAI_MAX_CONCURRENT_CALLS", "5")
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "BRIEFING_XAI_MAX_CONCURRENT_CALLS invalide (%r), fallback à 5",
+            raw,
+        )
+        return 5
+    return max(1, min(value, 10))
+
+
 # Parallélisme : nombre max d'appels xAI simultanés.
-# xAI rate-limit par minute — 10 workers couvre nos 21 appels en ~2 vagues.
-MAX_CONCURRENT_CALLS = 10
+# Configurable pour ajuster rapidement si xAI rate-limit en prod.
+# Défaut conservateur pour le premier déploiement de l'expansion des sources.
+MAX_CONCURRENT_CALLS = _max_concurrent_calls_from_env()
 
 
 # ---------------------------------------------------------------------------
@@ -295,9 +311,16 @@ def source_briefing(
         ))
 
     # -- Exécuter tous les appels en parallèle --------------------------------
-    logger.info("sourcing: %d appels xAI en parallèle (max %d workers)", len(call_specs), MAX_CONCURRENT_CALLS)
+    logger.info(
+        "sourcing: %d appels xAI en parallèle (max %d workers)",
+        len(call_specs),
+        MAX_CONCURRENT_CALLS,
+    )
     with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_CALLS) as executor:
-        futures = {executor.submit(_do_call, **spec): spec["prompt_label"] for spec in call_specs}
+        futures = {
+            executor.submit(_do_call, **spec): spec["prompt_label"]
+            for spec in call_specs
+        }
         for future in as_completed(futures):
             new_items, new_warnings, new_usage = future.result()
             items.extend(new_items)
