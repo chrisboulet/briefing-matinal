@@ -45,13 +45,15 @@ def test_render_produces_html(minimal_briefing, sections_cfg):
     assert warnings == []
 
 
-def test_render_contains_key_sections(minimal_briefing, sections_cfg):
+def test_render_contains_populated_sections(minimal_briefing, sections_cfg):
     html, _ = render(minimal_briefing, sections_cfg)
     assert "BRIEFING MATIN" in html
-    assert "EN 60 SECONDES" not in html  # retiré via issue #22
+    assert "EN" " 60" " SECONDES" not in html  # section retirée (issue #22)
     assert "À NE PAS MANQUER" in html
-    for section in sections_cfg:
-        assert section["label"] in html
+    assert "AI release" in html
+    assert "AI / Tech" in html
+    assert "Tesla" in html
+    assert "Politique" in html
 
 
 def test_render_no_cdn(minimal_briefing, sections_cfg):
@@ -103,10 +105,48 @@ def test_render_alt_sources_pluralized(make_item, sections_cfg, minimal_briefing
     assert "+ 2 autres" in html
 
 
-def test_render_empty_section_shows_placeholder(minimal_briefing, sections_cfg):
+def test_render_empty_primary_section_shows_single_placeholder(minimal_briefing, sections_cfg):
     minimal_briefing.sections["spacex"] = []
+    minimal_briefing.sections["sante"] = []
     html, _ = render(minimal_briefing, sections_cfg)
-    assert "Rien de marquant" in html
+    assert html.count("Rien de marquant") == 1
+
+
+def test_render_empty_optional_sections_are_hidden(minimal_briefing, sections_cfg):
+    for section_id in ("gouvernance", "cybersec", "leadership", "futur-travail"):
+        minimal_briefing.sections[section_id] = []
+
+    html, _ = render(minimal_briefing, sections_cfg)
+
+    assert "Gouvernance AI" not in html
+    assert "Cybersécurité" not in html
+    assert "Leadership / Gestion" not in html
+    assert "Futur du travail" not in html
+
+
+def test_render_does_not_repeat_empty_placeholders_when_optional_sections_empty(
+    minimal_briefing, sections_cfg,
+):
+    for section in sections_cfg:
+        minimal_briefing.sections[section["id"]] = []
+
+    html, _ = render(minimal_briefing, sections_cfg)
+
+    assert html.count("Rien de marquant dans la fenêtre.") <= 1
+
+
+def test_render_dont_miss_before_sections(minimal_briefing, sections_cfg):
+    """Issue #35 : 'À NE PAS MANQUER' doit précéder les sections thématiques."""
+    html, _ = render(minimal_briefing, sections_cfg)
+    pos_dont_miss = html.index("À NE PAS MANQUER")
+    pos_ai_section = html.index("AI / Tech")
+    assert pos_dont_miss < pos_ai_section
+
+
+def test_render_dont_miss_hero_has_pourquoi_ca_compte(minimal_briefing, sections_cfg):
+    """Issue #35 : le bloc 'Pourquoi ça compte' doit apparaître dans le hero item."""
+    html, _ = render(minimal_briefing, sections_cfg)
+    assert "Pourquoi ça compte" in html
 
 
 def test_render_dont_miss_optional(minimal_briefing, sections_cfg):

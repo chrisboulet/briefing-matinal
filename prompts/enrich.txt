@@ -19,6 +19,13 @@ then return a single-item JSON object with a substantiated summary in Quebec Fre
 3. Si le contenu est inaccessible, paywallé, ou hors sujet par rapport au titre, retourner un
    `summary` vide (`""`) et un `warnings` explicatif ; le caller gardera le résumé d'origine.
 
+# French quality gate
+Before returning JSON, review `summary` for natural Quebec French.
+- No raw Franglais unless it is a proper noun/product (`Claude Code`, `Starlink`, etc.).
+- Avoid: `solely`, `videogames`, `ramp-up`, `outputs`, `opérer compagnie`, `présente à événement`.
+- Prefer: `seulement`, `jeux vidéo`, `montée en charge`, `résultats`, `gérer une entreprise`, `lors d’un événement`.
+- Grammar matters: `L’U.S. Space Force` or `la Force spatiale américaine`; `secrétaire au Logement`, not `à la Logement`.
+
 # OUTPUT (CRITICAL)
 
 Return **ONLY** a JSON object with this EXACT shape — single-item, NOT wrapped in `items`:

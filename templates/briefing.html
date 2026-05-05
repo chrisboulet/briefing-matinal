@@ -122,22 +122,22 @@ details .src {
    internaux de pipeline (items hors fenêtre, sections vides, appels xAI dégradés)
    destinés à stderr et au JSON stdout pour hermes-agent, pas au lecteur final. #}
 
-{# Section 'EN 60 SECONDES' retirée (issue #22) : les items y étaient redondants
+{# Section de synthèse express retirée (issue #22) : les items y étaient redondants
    avec leurs sections thématiques respectives. #}
+
+{% if briefing.dont_miss %}
+<h2>📌 À NE PAS MANQUER</h2>
+{{ render_item(briefing.dont_miss, hero=true) }}
+{% endif %}
 
 {% for section in sections_in_order %}
 <h2>{{ section.emoji }} {{ section.label }}</h2>
 {% for item in briefing.sections.get(section.id, []) %}
 {{ render_item(item) }}
 {% else %}
-<p class="empty">Rien de marquant dans la fenêtre.</p>
+{% if section.show_empty_placeholder %}<p class="empty">Rien de marquant dans la fenêtre.</p>{% endif %}
 {% endfor %}
 {% endfor %}
-
-{% if briefing.dont_miss %}
-<h2>📌 À NE PAS MANQUER</h2>
-{{ render_item(briefing.dont_miss, hero=true) }}
-{% endif %}
 
 <p class="meta">
 briefing: {{ briefing.briefing_id }} ·
