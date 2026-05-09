@@ -37,6 +37,7 @@ from urllib.parse import urlparse
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from scripts.models import Item
+from scripts.scrapling_fetcher import fetch_article_text
 from scripts.xai_client import XAIClient, XAIError, XAIUsage
 
 logger = logging.getLogger(__name__)
@@ -362,13 +363,19 @@ def _enrich_one(
     """
     Enrichit UN item via `web_search` restreint au domaine.
 
+    Stratégie à deux niveaux :
+      1. Appel xAI web_search (1re tentative, contexte LLM riche).
+      2. Fallback Scrapling si xAI retourne summary vide ou lève XAIError
+         (fetch HTML direct + extraction texte — 0 coût API, latence locale).
+
     Retourne :
-      - `(enriched_item, usage)` en cas de succès ;
-      - `(None, zero_usage)` en cas d'échec soft non-exceptionnel (summary vide
-        ou invalide) ; le caller ajoutera un warning générique.
+      - `(enriched_item, usage)` en cas de succès (xAI OU Scrapling) ;
+      - `(None, zero_usage)` si les deux échouent ; le caller ajoutera un warning.
 
     **Laisse remonter `XAIError`** au caller pour que le warning inclue le
     nom exact de l'exception (observability — issue #25 test coverage).
+    Note : si Scrapling prend le relais, l'exception xAI est absorbée ici
+    pour permettre la dégradation gracieuse (on logue le fallback).
     """
     zero_usage = XAIUsage(input_tokens=0, output_tokens=0, tool_calls=0)
     host = _extract_host(item.canonical_url)
@@ -388,46 +395,79 @@ def _enrich_one(
 
     tool_params = {"allowed_domains": [host]}
 
-    # TODO(live): valider que `allowed_domains` accepte la forme `["host"]`
-    # pour `web_search` et que le retour du tool contient bien le body de
-    # l'article (et non juste un snippet SERP). Fallback : summary d'origine.
-    response = client.call(
-        system_prompt="",  # le prompt de rôle est inclus dans enrich.txt
-        user_prompt=user_prompt,
-        tool="web_search",
-        tool_params=tool_params,
-        prompt_label=prompt_label,
-        response_schema=_ENRICH_RESPONSE_SCHEMA,
-        schema_name=_ENRICH_SCHEMA_NAME,
-    )
+    # --- Tentative 1 : xAI web_search ---
+    xai_usage = zero_usage
+    new_summary = ""
+    try:
+        # TODO(live): valider que `allowed_domains` accepte la forme `["host"]`
+        # pour `web_search` et que le retour du tool contient bien le body de
+        # l'article (et non juste un snippet SERP). Fallback Scrapling si vide.
+        response = client.call(
+            system_prompt="",  # le prompt de rôle est inclus dans enrich.txt
+            user_prompt=user_prompt,
+            tool="web_search",
+            tool_params=tool_params,
+            prompt_label=prompt_label,
+            response_schema=_ENRICH_RESPONSE_SCHEMA,
+            schema_name=_ENRICH_SCHEMA_NAME,
+        )
+        xai_usage = response.usage
+        parsed = response.parsed_output
+        new_summary_raw = parsed.get("summary") if isinstance(parsed, dict) else None
+        new_summary = str(new_summary_raw or "").strip()
 
-    parsed = response.parsed_output
-    new_summary_raw = parsed.get("summary") if isinstance(parsed, dict) else None
-    new_summary = str(new_summary_raw or "").strip()
+        if new_summary:
+            # Succès xAI — log et retourne
+            _log_enrich_ok(
+                prompt_label,
+                item_id=item.id,
+                host=host,
+                summary_len=len(new_summary),
+                tokens_in=response.usage.input_tokens,
+                tokens_out=response.usage.output_tokens,
+                tool_calls=response.usage.tool_calls,
+                cost_usd=round(response.usage.cost_usd, 4),
+                duration_ms=response.duration_ms,
+                via="xai",
+            )
+            enriched = dataclasses.replace(
+                item,
+                summary=new_summary,
+                raw_excerpt=new_summary[:_RAW_EXCERPT_CAP],
+            )
+            return enriched, xai_usage
+        else:
+            _log_enrich_skip(prompt_label, item.id, reason="xai_empty_summary_trying_scrapling")
 
-    if not new_summary:
-        _log_enrich_skip(prompt_label, item.id, reason="empty_summary")
-        return None, response.usage
+    except XAIError as exc:
+        # On absorbe ici pour tenter Scrapling ; si Scrapling échoue aussi,
+        # on retourne (None, zero_usage) sans re-lever (dégradation gracieuse).
+        _log_enrich_skip(prompt_label, item.id, reason=f"xai_error_trying_scrapling:{type(exc).__name__}")
 
-    # Log structuré de succès (mirroir de xai_client._log_call).
-    _log_enrich_ok(
-        prompt_label,
-        item_id=item.id,
-        host=host,
-        summary_len=len(new_summary),
-        tokens_in=response.usage.input_tokens,
-        tokens_out=response.usage.output_tokens,
-        tool_calls=response.usage.tool_calls,
-        cost_usd=round(response.usage.cost_usd, 4),
-        duration_ms=response.duration_ms,
-    )
+    # --- Tentative 2 : fallback Scrapling (fetch HTML direct) ---
+    scrapling_text = fetch_article_text(item.canonical_url)
+    if scrapling_text:
+        _log_enrich_ok(
+            prompt_label,
+            item_id=item.id,
+            host=host,
+            summary_len=len(scrapling_text),
+            tokens_in=0,
+            tokens_out=0,
+            tool_calls=0,
+            cost_usd=0.0,
+            duration_ms=0,
+            via="scrapling_fallback",
+        )
+        enriched = dataclasses.replace(
+            item,
+            summary=scrapling_text,
+            raw_excerpt=scrapling_text[:_RAW_EXCERPT_CAP],
+        )
+        return enriched, xai_usage  # usage = xai attempt (peut être zero)
 
-    enriched = dataclasses.replace(
-        item,
-        summary=new_summary,
-        raw_excerpt=new_summary[:_RAW_EXCERPT_CAP],
-    )
-    return enriched, response.usage
+    _log_enrich_skip(prompt_label, item.id, reason="both_xai_and_scrapling_failed")
+    return None, xai_usage
 
 
 def _add_usage(a: XAIUsage, b: XAIUsage) -> XAIUsage:

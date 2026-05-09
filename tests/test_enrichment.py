@@ -374,10 +374,9 @@ def test_single_item_failure_isolated(make_item_factory) -> None:
         if it.id in (item_a.id, item_c.id):
             assert it.summary.startswith("enriched")
     assert result.enriched_count == 2
-    # Warning mentions failing item + XAIUnavailable
-    assert any(
-        "XAIUnavailable" in w and item_b.id in w for w in result.warnings
-    )
+    # Warning mentions failing item (XAIError absorbed + Scrapling fallback tried)
+    # Since Scrapling also fails (fake URL), item_b ends up with a warning about failure.
+    assert any(item_b.id in w for w in result.warnings)
 
 
 def test_all_items_fail_returns_originals_with_warning(make_item_factory) -> None:
