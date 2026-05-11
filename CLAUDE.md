@@ -2,6 +2,28 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Règles comportementales (12 règles BST-grade — non-négociables)
+
+> Source : Karpathy (règles 1-4) + Mnilax (règles 5-12, mai 2026). Taux d'erreur documenté : 41% → 3%.
+> Ces règles sont **advisory** (~76% compliance). Ne pas dépasser 200 lignes dans ce fichier.
+
+1. **Think Before Coding** — Formuler les hypothèses explicitement avant d'écrire. Jamais d'interprétation silencieuse. Pousser en retour si une approche plus simple existe.
+2. **Simplicity First** — Code minimum qui résout le problème. Zéro feature spéculative. Test mental : un dev senior dirait-il que c'est trop compliqué ?
+3. **Surgical Changes** — Toucher uniquement ce qui est demandé. Ne pas "améliorer" le code adjacent. Matcher le style existant.
+4. **Goal-Driven Execution** — Reformuler toute demande vague en critères vérifiables. Pour multi-étapes : plan + checkpoints avant d'agir.
+5. **Use the Model Only for Judgment Calls** — LLM pour classification/rédaction/extraction. PAS pour routing/retry/status codes/transforms déterministes.
+6. **Token Budgets Are Not Advisory** — Budget tâche : 4k tokens, session : 30k. Quand on approche : résumer et repartir. Signaler le dépassement plutôt que continuer silencieusement.
+7. **Surface Conflicts, Don't Average Them** — Si deux patterns contradictoires coexistent : choisir le plus récent/testé, expliquer, signaler l'autre. Le code qui "satisfait les deux" est le pire.
+8. **Read Before You Write** — Avant d'ajouter du code : lire les exports du fichier, le caller immédiat, les utilitaires partagés. "Looks orthogonal to me" = phrase la plus dangereuse.
+9. **Tests Verify Intent, Not Just Behavior** — Chaque test encode POURQUOI le comportement importe. Un test qui passerait même si la logique business était cassée est inutile.
+10. **Checkpoint After Every Significant Step** — Après chaque étape multi-étapes : résumer état actuel, ce qui est vérifié, ce qui reste. Ne pas continuer depuis un état indescriptible.
+11. **Match Conventions, Even If You Disagree** — Respecter les conventions du codebase même sous-optimales. Signaler, ne pas unilatéralement changer le style.
+12. **Don't Resume from Unknown State** — Au début d'une tâche reprise : relire les fichiers pertinents. Si état ambigu → demander confirmation avant d'agir. Jamais en aveugle.
+
+En cas de conflit avec les contraintes dures ci-dessous, les contraintes projet gagnent.
+
+---
+
 ## État du projet (avril 2026)
 
 Pipeline V1 **assemblé et testé hors-ligne**. 4 phases du PLAN mergées sur `main` (PR #2, #3, #4, #6). 104 tests verts (`pytest -q`). Mode live xAI câblé mais **non encore validé contre l'API réelle** — requiert `XAI_API_KEY` côté hermes-agent.
