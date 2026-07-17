@@ -88,7 +88,7 @@ def _make_xai_client() -> XAIClient:
             "Use --fixture for offline mode."
         )
 
-    model = os.environ.get("XAI_MODEL", "grok-4-1-fast-non-reasoning")
+    model = os.environ.get("XAI_MODEL", "grok-4.5")
     timeout_s = float(os.environ.get("XAI_TIMEOUT_S", "30"))
 
     return XAIClient(api_key=api_key, model=model, timeout_s=timeout_s)

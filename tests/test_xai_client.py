@@ -417,10 +417,8 @@ def test_build_body_has_model_input_tools_and_strict_schema(
     ]
     assert isinstance(body["tools"], list) and len(body["tools"]) == 1
     assert body["tools"][0]["type"] == "x_search"
-    assert body["response_format"]["type"] == "json_schema"
-    assert body["response_format"]["json_schema"]["strict"] is True
-    assert body["response_format"]["json_schema"]["name"] == "briefing_items"
-    assert body["response_format"]["json_schema"]["schema"] == ITEMS_SCHEMA
+    # Responses API rejects response_format (issue xAI / WIP 2026-07)
+    assert "response_format" not in body
 
 
 def test_build_body_spreads_x_search_params(
@@ -640,23 +638,19 @@ def test_warnings_list_of_non_strings_coerced_to_str(
 def test_call_default_schema_is_briefing_items(
     client: XAIClient, httpx_mock: HTTPXMock
 ) -> None:
-    """Without the new params, body sent to xAI contains
-    response_format.json_schema.name == "briefing_items" AND the current
-    ITEMS_SCHEMA."""
+    """Default call still parses briefing_items shape; body has no response_format."""
     httpx_mock.add_response(url=XAI_URL, json=_ok_payload())
-    client.call("sys", "user", tool="x_search")
+    resp = client.call("sys", "user", tool="x_search")
 
     body = json.loads(httpx_mock.get_requests()[0].content)
-    json_schema = body["response_format"]["json_schema"]
-    assert json_schema["name"] == "briefing_items"
-    assert json_schema["schema"] == ITEMS_SCHEMA
+    assert "response_format" not in body
+    assert "items" in resp.parsed_output
 
 
 def test_call_custom_schema_overrides_default(
     client: XAIClient, httpx_mock: HTTPXMock
 ) -> None:
-    """When response_schema + schema_name are passed, the body carries those
-    values instead of ITEMS_SCHEMA / briefing_items."""
+    """Custom schema_name changes parse policy (no items key required), not wire body."""
     custom_schema = {
         "type": "object",
         "additionalProperties": False,
@@ -679,7 +673,7 @@ def test_call_custom_schema_overrides_default(
     }
     httpx_mock.add_response(url=XAI_URL, json=payload)
 
-    client.call(
+    resp = client.call(
         "sys", "user",
         tool="web_search",
         tool_params={"allowed_domains": ["example.com"]},
@@ -688,9 +682,8 @@ def test_call_custom_schema_overrides_default(
     )
 
     body = json.loads(httpx_mock.get_requests()[0].content)
-    json_schema = body["response_format"]["json_schema"]
-    assert json_schema["name"] == "enrichment"
-    assert json_schema["schema"] == custom_schema
+    assert "response_format" not in body
+    assert resp.parsed_output["summary"] == "enriched content"
 
 
 def test_call_custom_schema_no_items_key_not_enforced(
