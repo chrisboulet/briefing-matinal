@@ -121,22 +121,29 @@ THEME_BUFFER = 2  # max_items section + 2 pour laisser le dedupe respirer
 
 
 def _max_concurrent_calls_from_env() -> int:
-    raw = os.getenv("BRIEFING_XAI_MAX_CONCURRENT_CALLS", "5")
+    # Issue #44 : défaut 3 (5 provoquait cascades de timeouts / retries coûteux).
+    raw = os.getenv("BRIEFING_XAI_MAX_CONCURRENT_CALLS", "3")
     try:
         value = int(raw)
     except ValueError:
         logger.warning(
-            "BRIEFING_XAI_MAX_CONCURRENT_CALLS invalide (%r), fallback à 5",
+            "BRIEFING_XAI_MAX_CONCURRENT_CALLS invalide (%r), fallback à 3",
             raw,
         )
-        return 5
+        return 3
     return max(1, min(value, 10))
 
 
 # Parallélisme : nombre max d'appels xAI simultanés.
 # Configurable pour ajuster rapidement si xAI rate-limit en prod.
-# Défaut conservateur pour le premier déploiement de l'expansion des sources.
+# Défaut conservateur post-#44 (prod dogfood 2026-07-17).
 MAX_CONCURRENT_CALLS = _max_concurrent_calls_from_env()
+
+# Circuit breaker : si après min N appels terminés, le ratio d'échecs dépasse
+# le seuil, on annule les futures restantes pour limiter coût/durée.
+CIRCUIT_BREAKER_MIN_COMPLETED = 6
+CIRCUIT_BREAKER_FAILURE_RATIO = 0.75
+COST_WARNING_USD = 0.50
 
 
 # ---------------------------------------------------------------------------
@@ -316,16 +323,57 @@ def source_briefing(
         len(call_specs),
         MAX_CONCURRENT_CALLS,
     )
+    completed = 0
+    failures = 0
     with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_CALLS) as executor:
         futures = {
             executor.submit(_do_call, **spec): spec["prompt_label"]
             for spec in call_specs
         }
         for future in as_completed(futures):
-            new_items, new_warnings, new_usage = future.result()
+            label = futures[future]
+            try:
+                new_items, new_warnings, new_usage = future.result()
+            except Exception as exc:
+                failures += 1
+                completed += 1
+                warnings.append(f"{label}: unexpected executor error: {exc}")
+                continue
+
             items.extend(new_items)
             warnings.extend(new_warnings)
             total_usage = _add_usage(total_usage, new_usage)
+            completed += 1
+            # Échec dur seulement (timeout/invalid/rate/auth) — pas un thème sparse
+            # avec warning LLM « aucun post ».
+            hard_fail = any(
+                w.startswith(f"{label}: XAI") or w.startswith(f"{label}: unexpected")
+                for w in new_warnings
+            )
+            if hard_fail:
+                failures += 1
+
+            if (
+                completed >= CIRCUIT_BREAKER_MIN_COMPLETED
+                and failures / completed >= CIRCUIT_BREAKER_FAILURE_RATIO
+            ):
+                cancelled = 0
+                for pending in futures:
+                    if pending.cancel():
+                        cancelled += 1
+                warnings.append(
+                    "circuit_breaker: "
+                    f"{failures}/{completed} appels en échec "
+                    f"(≥{CIRCUIT_BREAKER_FAILURE_RATIO:.0%}) — "
+                    f"{cancelled} appels restants annulés pour limiter coût/durée"
+                )
+                break
+
+    if total_usage.cost_usd >= COST_WARNING_USD:
+        warnings.append(
+            f"cost_warning: sourcing ${total_usage.cost_usd:.2f} "
+            f"≥ seuil ${COST_WARNING_USD:.2f}"
+        )
 
     return SourcingResult(items=items, warnings=warnings, total_usage=total_usage)
 

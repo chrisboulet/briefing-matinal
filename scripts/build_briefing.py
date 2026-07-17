@@ -16,7 +16,9 @@ from scripts.dedup import dedupe
 from scripts.fixture_loader import load_fixture
 from scripts.models import Briefing, Item
 from scripts.render import RenderError, render
+from scripts.scoring import rescore_items
 from scripts.select import (
+    DEFAULT_MAX_ITEMS_PER_AUTHOR,
     apply_engagement_filter,
     select_by_section,
     select_dont_miss,
@@ -89,7 +91,13 @@ def _make_xai_client() -> XAIClient:
         )
 
     model = os.environ.get("XAI_MODEL", "grok-4.5")
-    timeout_s = float(os.environ.get("XAI_TIMEOUT_S", "30"))
+    # Issue #44 : défaut 90s (agentic x_search dépasse souvent 30s sous charge).
+    raw_timeout = os.environ.get("XAI_TIMEOUT_S", "90")
+    try:
+        timeout_s = float(raw_timeout)
+    except ValueError:
+        timeout_s = 90.0
+    timeout_s = max(15.0, min(timeout_s, 180.0))
 
     return XAIClient(api_key=api_key, model=model, timeout_s=timeout_s)
 
@@ -158,10 +166,29 @@ def build(
     config = load_config(config_path)
     sections_cfg = config["sections"]
     cfg_hash = config_hash(config_path)
+    max_per_author = int(
+        config.get("max_items_per_author", DEFAULT_MAX_ITEMS_PER_AUTHOR)
+    )
 
     fixture_meta: dict | None = None
     source_warnings: list[str]
     enrich_warnings: list[str] = []
+
+    def _pipeline(all_items: list[Item], window_start: datetime, window_end: datetime):
+        """Filter → rescore (#45) → dedupe → select (+ author cap #43)."""
+        filtered = apply_engagement_filter(all_items, config["engagement_min"])
+        filtered = [
+            it for it in filtered if window_start <= it.published_at <= window_end
+        ]
+        rescored = rescore_items(filtered, window_start, window_end)
+        deduped = dedupe(rescored)
+        sections = select_by_section(
+            deduped, sections_cfg, max_items_per_author=max_per_author
+        )
+        dont_miss = select_dont_miss(
+            deduped, sections, max_items_per_author=max_per_author
+        )
+        return sections, dont_miss
 
     if fixtures:
         # Mode offline (Phase 1) — fixtures fournies, pas d'enrichissement
@@ -172,12 +199,7 @@ def build(
         window_start, window_end = compute_window(moment, now)  # type: ignore[arg-type]
         bid = compute_briefing_id(moment, now)  # type: ignore[arg-type]
 
-        filtered = apply_engagement_filter(all_items, config["engagement_min"])
-        filtered = [it for it in filtered if window_start <= it.published_at <= window_end]
-        deduped = dedupe(filtered)
-
-        sections = select_by_section(deduped, sections_cfg)
-        dont_miss = select_dont_miss(deduped, sections)
+        sections, dont_miss = _pipeline(all_items, window_start, window_end)
     else:
         # Mode live (Phase 3+Issue #25) — sourcing + enrichissement 2e passe,
         # tous deux sous le même `XAIClient` (1 httpx.Client réutilisé).
@@ -193,12 +215,7 @@ def build(
             window_start, window_end = compute_window(moment, now)  # type: ignore[arg-type]
             bid = compute_briefing_id(moment, now)  # type: ignore[arg-type]
 
-            filtered = apply_engagement_filter(all_items, config["engagement_min"])
-            filtered = [it for it in filtered if window_start <= it.published_at <= window_end]
-            deduped = dedupe(filtered)
-
-            sections = select_by_section(deduped, sections_cfg)
-            dont_miss = select_dont_miss(deduped, sections)
+            sections, dont_miss = _pipeline(all_items, window_start, window_end)
 
             # Enrichissement 2e passe (issue #25) : hooké ICI, après sélection,
             # avant la construction du Briefing. Kill switch via BRIEFING_ENRICH=0.

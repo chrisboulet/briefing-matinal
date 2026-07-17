@@ -111,7 +111,7 @@
     "reddit.com"
   ],
   "sections": [
-    {"id": "ai-tech",       "label": "AI / Tech",             "emoji": "🤖", "max_items": 6},
+    {"id": "ai-tech",       "label": "AI / Tech",             "emoji": "🤖", "max_items": 4},
     {"id": "tesla",         "label": "Tesla",                 "emoji": "🚗", "max_items": 3},
     {"id": "spacex",        "label": "SpaceX",                "emoji": "🚀", "max_items": 3},
     {"id": "sante",         "label": "Santé",                 "emoji": "🏥", "max_items": 3},
@@ -125,5 +125,6 @@
   "engagement_min": {
     "likes": 15,
     "reposts": 5
-  }
+  },
+  "max_items_per_author": 1
 }

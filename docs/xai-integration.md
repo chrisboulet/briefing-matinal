@@ -21,7 +21,7 @@ Le briefing utilise **xAI Grok via la Responses API** (`POST https://api.x.ai/v1
 |---|---|---|---|
 | `XAI_API_KEY` | Oui en mode `live` | `xai-...` | Injectée par hermes-agent au runtime |
 | `XAI_MODEL` | Non | `grok-4.5` | Override du modèle (défaut repo + pin Hermes) |
-| `XAI_TIMEOUT_S` | Non | `30` | Timeout par appel HTTP (défaut 30s) |
+| `XAI_TIMEOUT_S` | Non | `90` | Timeout par appel HTTP (défaut 90s, issue #44) |
 | `XAI_MAX_RETRIES` | Non | `2` | Retries sur 5xx (défaut 2, total 3 essais) |
 
 Mode `fixture` (Phase 1) : aucune variable xAI requise.

@@ -31,7 +31,7 @@ XAI_BASE_URL = "https://api.x.ai/v1"
 # Défaut aligné prod Hermes + modèles listés GET /v1/models (2026-07-17).
 # Anciens fast-1 IDs (grok-4-1-fast-*) absents de l'API.
 DEFAULT_MODEL = "grok-4.5"
-DEFAULT_TIMEOUT_S = 30.0
+DEFAULT_TIMEOUT_S = 90.0
 DEFAULT_MAX_RETRIES = 2  # = 3 essais total
 
 # Pricing avril 2026 (per docs/xai-integration.md)
@@ -171,8 +171,9 @@ class XAIClient:
     """
     Wrapper synchrone autour de POST /v1/responses.
 
-    Une instance = un client httpx réutilisable. Thread-safe pour usage simple
-    (un thread par instance recommandé).
+    Une instance = un client httpx réutilisable. httpx.Client est thread-safe
+    pour des requêtes concurrentes (pool de connexions interne) ; le sourcing
+    parallèle (ThreadPoolExecutor) partage volontairement une instance.
     """
 
     def __init__(

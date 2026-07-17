@@ -95,6 +95,13 @@
         "likes": { "type": "integer", "minimum": 0 },
         "reposts": { "type": "integer", "minimum": 0 }
       }
+    },
+    "max_items_per_author": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10,
+      "default": 1,
+      "description": "Plafond global d'items rendus par source_handle (0 = désactivé). Issue #43 anti-monologue."
     }
   }
 }

@@ -106,14 +106,27 @@ def test_select_dont_miss_skips_homepage_leftover(make_item) -> None:
 
 
 def test_select_dont_miss_prefers_eligible_leftover_over_homepage(make_item) -> None:
-    homepage = make_item("Noise", "https://news.example.com/", section_id="business", score=0.99)
+    homepage = make_item(
+        "Noise",
+        "https://news.example.com/",
+        section_id="business",
+        score=0.99,
+        source_handle="news.example.com",
+    )
     article = make_item(
         "Alstom: fronde actionnaires",
         "https://lapresse.ca/affaires/2026-07-17/alstom",
         section_id="business",
         score=0.70,
+        source_handle="lapresse.ca",
     )
-    selected_item = make_item("Other", "https://e.com/other", section_id="ai-tech", score=0.95)
+    selected_item = make_item(
+        "Other",
+        "https://e.com/other",
+        section_id="ai-tech",
+        score=0.95,
+        source_handle="@other",
+    )
     selected = {"ai-tech": [selected_item]}
     out = select_dont_miss([homepage, article, selected_item], selected)
     assert out is not None
