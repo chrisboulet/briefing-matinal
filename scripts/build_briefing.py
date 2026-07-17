@@ -30,7 +30,8 @@ if TYPE_CHECKING:
 # Bumper en cas de modification sémantique des prompts dans prompts/.
 # Le hash est injecté en footer du HTML rendu (traçabilité audit).
 # v1.3 : French quality gate + titres FR par défaut + masquage sections vides.
-PROMPTS_VERSION = "prompts-v1.3"
+# v1.4 : hot multi-camp / origin-first patterns (issue #38, whathappened-inspired).
+PROMPTS_VERSION = "prompts-v1.4"
 
 # Kill switch pour l'enrichissement 2e passe (issue #25).
 # Exporter `BRIEFING_ENRICH=0` pour désactiver. Défaut "1" = actif en mode live.

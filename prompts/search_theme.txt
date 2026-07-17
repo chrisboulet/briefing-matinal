@@ -18,8 +18,18 @@ Each returned item MUST have `section_id = "{{ section_id }}"` — this thematic
 # Source diversity
 Avoid returning multiple posts from the same author about the same event. If a major event has 5 reposts/quotes, return ONE (the most authoritative source) and let the caller dedupe.
 
+# High-velocity / contested topics (conditional lattice)
+If the theme query surfaces a **launch, major announcement, or clear multi-camp debate** inside the window:
+1. Prefer **origin / first-party** (official handle or announcement thread) as the retained item when available.
+2. Still use tools to notice **pushback / steelman / counter-claims** (quote tweets, high-reply posts) so the `summary` can state a real Side A vs Side B split when warranted (see system prompt).
+3. Do **not** return 5 near-duplicate dunks. Cap to the most authoritative origin + at most one strong counter-take if they are different events/angles; otherwise one item with a split-aware summary.
+4. If the sample is thin or one-sided, keep a factual summary — never invent camps or %.
+
+For calm thematic noise (single paper, routine product tip): ignore this section; classic quality bar only.
+
 # Score (0.0-1.0)
 Same scale as `search_accounts`. Calibrate down vs account-curated content (anonymous accounts are usually less authoritative).
+Boost slightly when the item is a clear origin/first-party announcement for a major launch.
 
 # Quantity
 Return up to {{ max_items }} items. Quality > quantity.
