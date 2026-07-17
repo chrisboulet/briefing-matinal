@@ -26,6 +26,8 @@ import logging
 import sys
 from typing import Any
 
+from scripts.item_quality import is_homepage_url
+
 logger = logging.getLogger(__name__)
 
 # Cap du texte extrait (chars) : on ne passe pas un article entier au résumé.
@@ -44,6 +46,7 @@ def fetch_article_text(url: str, timeout: int = _FETCH_TIMEOUT_S) -> str | None:
     Fetche une URL et extrait le texte principal de l'article.
 
     Retourne le texte tronqué à _TEXT_CAP chars, ou None si :
+    - URL homepage / index (issue #40 — pas un article)
     - Scrapling non installé (ImportError)
     - Erreur réseau / timeout
     - Contenu extrait insuffisant (< _MIN_PARAGRAPHS paragraphes)
@@ -56,6 +59,10 @@ def fetch_article_text(url: str, timeout: int = _FETCH_TIMEOUT_S) -> str | None:
     Returns:
         str tronqué ou None.
     """
+    if is_homepage_url(url):
+        _log_fetch_event(url, status="rejected_homepage")
+        return None
+
     try:
         from scrapling.fetchers import Fetcher  # import local pour dégradation gracieuse
     except ImportError:

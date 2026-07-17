@@ -5,9 +5,10 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
+from scripts.item_quality import is_hero_url_eligible
 from scripts.models import Item
 
-# Compte les items "longs" (vidéo, thread, article long) — utilisé pour dont_miss
+# Compte les items "longs" (vidéo, thread, article long) — bonus pour dont_miss
 LONGFORM_HINTS = ("youtube.com", "youtu.be", "/thread/", "watch?v=")
 
 
@@ -35,22 +36,43 @@ def select_dont_miss(
     selected: dict[str, list[Item]],
 ) -> Item | None:
     """
-    1 item 'À NE PAS MANQUER' choisi parmi les NON-retenus par les sections (anti-redondance).
-    Privilégie les longs formats (vidéo / thread / article long).
-    Retourne None si aucun candidat valable.
+    1 item 'À NE PAS MANQUER'.
+
+    Règles (issue #40 + anti-redondance historique) :
+    1. Préférer un leftover (non déjà rendu en section) pour éviter le doublon.
+    2. URL homepage / vide → inéligible hero.
+    3. Parmi les leftovers éligibles : bonus soft longform, puis score DESC.
+    4. Si des leftovers existent mais sont tous inéligibles (ex. homepage) :
+       fallback sur le meilleur item déjà sélectionné éligible.
+    5. Si aucun leftover du tout (tout est déjà en section) → None (anti-redondance).
     """
     selected_ids = {it.id for items in selected.values() for it in items}
     leftovers = [it for it in all_items if it.id not in selected_ids]
-    if not leftovers:
-        return None
 
     def is_longform(it: Item) -> bool:
         return any(h in it.canonical_url for h in LONGFORM_HINTS)
 
-    longforms = [it for it in leftovers if is_longform(it)]
-    pool = longforms or leftovers
-    pool.sort(key=lambda x: (-x.score, -x.published_at.timestamp(), x.id))
-    return pool[0]
+    def rank_key(it: Item) -> tuple:
+        return (0 if is_longform(it) else 1, -it.score, -it.published_at.timestamp(), it.id)
+
+    def pick(pool: list[Item]) -> Item | None:
+        eligible = [it for it in pool if is_hero_url_eligible(it.canonical_url)]
+        if not eligible:
+            return None
+        eligible.sort(key=rank_key)
+        return eligible[0]
+
+    if not leftovers:
+        return None
+
+    chosen = pick(leftovers)
+    if chosen is not None:
+        return chosen
+
+    # Leftovers existed but all failed hero URL quality → better a solid
+    # section item than a homepage Frankenstein (issue #40).
+    selected_flat = [it for items in selected.values() for it in items]
+    return pick(selected_flat)
 
 
 def apply_engagement_filter(
