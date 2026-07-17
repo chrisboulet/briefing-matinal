@@ -18,13 +18,21 @@ RIGHT_SINGLE_QUOTE = "\N{RIGHT SINGLE QUOTATION MARK}"
 
 def polish_briefing(briefing: Briefing) -> Briefing:
     """Retourne une copie du briefing avec titres/résumés normalisés FR-QC."""
+    polished_top = [polish_item_text(item) for item in briefing.top_signals]
+    polished_dm = (
+        polish_item_text(briefing.dont_miss) if briefing.dont_miss else None
+    )
+    # Si top_signals présent, aligner dont_miss sur le premier poli.
+    if polished_top:
+        polished_dm = polished_top[0]
     return replace(
         briefing,
         sections={
             section_id: [polish_item_text(item) for item in items]
             for section_id, items in briefing.sections.items()
         },
-        dont_miss=polish_item_text(briefing.dont_miss) if briefing.dont_miss else None,
+        dont_miss=polished_dm,
+        top_signals=polished_top,
     )
 
 

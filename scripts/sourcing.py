@@ -214,10 +214,13 @@ def source_briefing(
     warnings: list[str] = []
     total_usage = XAIUsage(input_tokens=0, output_tokens=0, tool_calls=0)
 
-    # -- Construire toutes les specs d'appels --------------------------------
-    # Chaque spec est un dict de kwargs pour _do_call. On les accumule tous
-    # avant d'exécuter, puis on les lance en parallèle via ThreadPoolExecutor.
-    call_specs: list[dict[str, Any]] = []
+    # -- Construire les specs par phase (accounts → themes → web) -------------
+    # Les comptes sont prioritaires pour la densité du brief; le circuit
+    # breaker ne s'applique PAS à la phase accounts (ne jamais annuler le
+    # socle watchlist). Themes/web peuvent être coupés si xAI est en panne.
+    account_specs: list[dict[str, Any]] = []
+    theme_specs: list[dict[str, Any]] = []
+    web_specs: list[dict[str, Any]] = []
 
     # 1. Comptes X surveillés (batchs de MAX_HANDLES_PER_CALL)
     handles_all = config["comptes_x"]
@@ -237,7 +240,7 @@ def source_briefing(
                 "max_items_total": min(DEFAULT_MAX_ACCOUNTS_TOTAL, max_items_per_call),
             },
         )
-        call_specs.append(dict(
+        account_specs.append(dict(
             client=client,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
@@ -270,7 +273,7 @@ def source_briefing(
                 "max_items": max_items,
             },
         )
-        call_specs.append(dict(
+        theme_specs.append(dict(
             client=client,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
@@ -300,7 +303,7 @@ def source_briefing(
                 "max_items_total": min(DEFAULT_MAX_WEB_TOTAL, max_items_per_call),
             },
         )
-        call_specs.append(dict(
+        web_specs.append(dict(
             client=client,
             system_prompt=system_prompt,
             user_prompt=web_user_prompt,
@@ -317,14 +320,54 @@ def source_briefing(
             default_source_type="web",
         ))
 
-    # -- Exécuter tous les appels en parallèle --------------------------------
-    logger.info(
-        "sourcing: %d appels xAI en parallèle (max %d workers)",
-        len(call_specs),
-        MAX_CONCURRENT_CALLS,
-    )
+    phases: list[tuple[str, list[dict[str, Any]], bool]] = [
+        ("accounts", account_specs, False),  # never circuit-break accounts
+        ("themes", theme_specs, True),
+        ("web", web_specs, True),
+    ]
+
+    for phase_name, specs, allow_circuit in phases:
+        if not specs:
+            continue
+        logger.info(
+            "sourcing phase=%s: %d appels (max %d workers, circuit=%s)",
+            phase_name,
+            len(specs),
+            MAX_CONCURRENT_CALLS,
+            allow_circuit,
+        )
+        phase_items, phase_warnings, phase_usage, tripped = _run_call_phase(
+            specs, allow_circuit=allow_circuit, phase_name=phase_name
+        )
+        items.extend(phase_items)
+        warnings.extend(phase_warnings)
+        total_usage = _add_usage(total_usage, phase_usage)
+        # Si themes trippe, on tente encore le web (souvent plus léger).
+        # Pas de skip global de phases suivantes.
+
+    if total_usage.cost_usd >= COST_WARNING_USD:
+        warnings.append(
+            f"cost_warning: sourcing ${total_usage.cost_usd:.2f} "
+            f"≥ seuil ${COST_WARNING_USD:.2f}"
+        )
+
+    return SourcingResult(items=items, warnings=warnings, total_usage=total_usage)
+
+
+def _run_call_phase(
+    call_specs: list[dict[str, Any]],
+    *,
+    allow_circuit: bool,
+    phase_name: str,
+) -> tuple[list[Item], list[str], XAIUsage, bool]:
+    """Exécute une phase d'appels en parallèle. Retourne (items, warnings, usage, tripped)."""
+    items: list[Item] = []
+    warnings: list[str] = []
+    total_usage = XAIUsage(input_tokens=0, output_tokens=0, tool_calls=0)
     completed = 0
     failures = 0
+    tripped = False
+
     with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_CALLS) as executor:
         futures = {
             executor.submit(_do_call, **spec): spec["prompt_label"]
@@ -344,8 +387,6 @@ def source_briefing(
             warnings.extend(new_warnings)
             total_usage = _add_usage(total_usage, new_usage)
             completed += 1
-            # Échec dur seulement (timeout/invalid/rate/auth) — pas un thème sparse
-            # avec warning LLM « aucun post ».
             hard_fail = any(
                 w.startswith(f"{label}: XAI") or w.startswith(f"{label}: unexpected")
                 for w in new_warnings
@@ -354,7 +395,8 @@ def source_briefing(
                 failures += 1
 
             if (
-                completed >= CIRCUIT_BREAKER_MIN_COMPLETED
+                allow_circuit
+                and completed >= CIRCUIT_BREAKER_MIN_COMPLETED
                 and failures / completed >= CIRCUIT_BREAKER_FAILURE_RATIO
             ):
                 cancelled = 0
@@ -362,20 +404,15 @@ def source_briefing(
                     if pending.cancel():
                         cancelled += 1
                 warnings.append(
-                    "circuit_breaker: "
+                    f"circuit_breaker[{phase_name}]: "
                     f"{failures}/{completed} appels en échec "
                     f"(≥{CIRCUIT_BREAKER_FAILURE_RATIO:.0%}) — "
-                    f"{cancelled} appels restants annulés pour limiter coût/durée"
+                    f"{cancelled} appels restants de la phase annulés"
                 )
+                tripped = True
                 break
 
-    if total_usage.cost_usd >= COST_WARNING_USD:
-        warnings.append(
-            f"cost_warning: sourcing ${total_usage.cost_usd:.2f} "
-            f"≥ seuil ${COST_WARNING_USD:.2f}"
-        )
-
-    return SourcingResult(items=items, warnings=warnings, total_usage=total_usage)
+    return items, warnings, total_usage, tripped
 
 
 # ---------------------------------------------------------------------------

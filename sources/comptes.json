@@ -126,5 +126,6 @@
     "likes": 15,
     "reposts": 5
   },
-  "max_items_per_author": 1
+  "max_items_per_author": 1,
+  "top_signals_max": 10
 }

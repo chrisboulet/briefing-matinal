@@ -7,6 +7,7 @@ from scripts.select import (
     normalize_handle,
     select_by_section,
     select_dont_miss,
+    select_top_signals,
 )
 
 SECTIONS_CFG = [
@@ -137,6 +138,41 @@ def test_multi_author_still_fills_slots(make_item):
     assert len(out["ai-tech"]) == 4
     handles = {it.source_handle for it in out["ai-tech"]}
     assert len(handles) == 4
+
+
+def test_select_top_signals_picks_up_to_n_distinct_authors(make_item):
+    items = [
+        make_item(
+            f"hot {i}",
+            f"https://e.com/{i}",
+            section_id="ai-tech",
+            score=0.95 - i * 0.02,
+            source_handle=f"@u{i}",
+        )
+        for i in range(15)
+    ]
+    top = select_top_signals(items, max_n=10, max_items_per_author=1)
+    assert len(top) == 10
+    assert len({it.source_handle for it in top}) == 10
+    assert top[0].title == "hot 0"
+
+
+def test_select_top_signals_skips_homepage(make_item):
+    homepage = make_item(
+        "noise",
+        "https://news.example.com/",
+        score=0.99,
+        source_handle="@noise",
+    )
+    good = make_item(
+        "good",
+        "https://lapresse.ca/a/1",
+        score=0.5,
+        source_handle="lapresse.ca",
+    )
+    top = select_top_signals([homepage, good], max_n=10)
+    assert len(top) == 1
+    assert top[0].title == "good"
 
 
 def test_select_dont_miss_avoids_redundancy(make_item):

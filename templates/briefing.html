@@ -125,9 +125,11 @@ details .src {
 {# Section de synthèse express retirée (issue #22) : les items y étaient redondants
    avec leurs sections thématiques respectives. #}
 
-{% if briefing.dont_miss %}
+{% if briefing.heroes %}
 <h2>📌 À NE PAS MANQUER</h2>
-{{ render_item(briefing.dont_miss, hero=true) }}
+{% for item in briefing.heroes %}
+{{ render_item(item, hero=true) }}
+{% endfor %}
 {% endif %}
 
 {% for section in sections_in_order %}

@@ -19,9 +19,10 @@ from scripts.render import RenderError, render
 from scripts.scoring import rescore_items
 from scripts.select import (
     DEFAULT_MAX_ITEMS_PER_AUTHOR,
+    DEFAULT_TOP_SIGNALS_MAX,
     apply_engagement_filter,
     select_by_section,
-    select_dont_miss,
+    select_top_signals,
 )
 from scripts.window import briefing_id as compute_briefing_id
 from scripts.window import compute_window
@@ -134,25 +135,25 @@ def _source_via_xai(
 def _enrich_live(
     client: XAIClient,
     sections: dict[str, list[Item]],
-    dont_miss: Item | None,
-) -> tuple[dict[str, list[Item]], Item | None, list[str]]:
+    top_signals: list[Item],
+) -> tuple[dict[str, list[Item]], list[Item], list[str]]:
     """
     Appelle l'enrichissement 2e passe (issue #25).
 
     Skippé silencieusement si `BRIEFING_ENRICH=0`. Retourne les sections
-    et `dont_miss` potentiellement enrichis, plus la liste des warnings.
+    et `top_signals` potentiellement enrichis, plus la liste des warnings.
     """
     if os.environ.get(_ENRICH_ENV_VAR, "1") == "0":
         sys.stderr.write(json.dumps({
             "event": "enrichment_skipped",
             "reason": f"{_ENRICH_ENV_VAR}=0",
         }) + "\n")
-        return sections, dont_miss, []
+        return sections, top_signals, []
 
     from scripts.enrichment import enrich_selected
 
-    result = enrich_selected(client, sections, dont_miss)
-    return result.sections, result.dont_miss, result.warnings
+    result = enrich_selected(client, sections, top_signals=top_signals)
+    return result.sections, result.top_signals, result.warnings
 
 
 def build(
@@ -169,26 +170,36 @@ def build(
     max_per_author = int(
         config.get("max_items_per_author", DEFAULT_MAX_ITEMS_PER_AUTHOR)
     )
+    top_n = int(config.get("top_signals_max", DEFAULT_TOP_SIGNALS_MAX))
 
     fixture_meta: dict | None = None
     source_warnings: list[str]
     enrich_warnings: list[str] = []
 
     def _pipeline(all_items: list[Item], window_start: datetime, window_end: datetime):
-        """Filter → rescore (#45) → dedupe → select (+ author cap #43)."""
+        """Filter → rescore → dedupe → top N → sections (+ author cap)."""
         filtered = apply_engagement_filter(all_items, config["engagement_min"])
         filtered = [
             it for it in filtered if window_start <= it.published_at <= window_end
         ]
         rescored = rescore_items(filtered, window_start, window_end)
         deduped = dedupe(rescored)
+        # Top sujets chauds d'abord (cible ~10), puis sections sans doublon auteur.
+        top_signals = select_top_signals(
+            deduped,
+            max_n=top_n,
+            max_items_per_author=max_per_author,
+        )
+        top_ids = {it.id for it in top_signals}
+        remaining = [it for it in deduped if it.id not in top_ids]
         sections = select_by_section(
-            deduped, sections_cfg, max_items_per_author=max_per_author
+            remaining,
+            sections_cfg,
+            max_items_per_author=max_per_author,
+            prior_handles=[it.source_handle for it in top_signals],
         )
-        dont_miss = select_dont_miss(
-            deduped, sections, max_items_per_author=max_per_author
-        )
-        return sections, dont_miss
+        dont_miss = top_signals[0] if top_signals else None
+        return sections, dont_miss, top_signals
 
     if fixtures:
         # Mode offline (Phase 1) — fixtures fournies, pas d'enrichissement
@@ -199,7 +210,7 @@ def build(
         window_start, window_end = compute_window(moment, now)  # type: ignore[arg-type]
         bid = compute_briefing_id(moment, now)  # type: ignore[arg-type]
 
-        sections, dont_miss = _pipeline(all_items, window_start, window_end)
+        sections, dont_miss, top_signals = _pipeline(all_items, window_start, window_end)
     else:
         # Mode live (Phase 3+Issue #25) — sourcing + enrichissement 2e passe,
         # tous deux sous le même `XAIClient` (1 httpx.Client réutilisé).
@@ -215,13 +226,16 @@ def build(
             window_start, window_end = compute_window(moment, now)  # type: ignore[arg-type]
             bid = compute_briefing_id(moment, now)  # type: ignore[arg-type]
 
-            sections, dont_miss = _pipeline(all_items, window_start, window_end)
+            sections, dont_miss, top_signals = _pipeline(
+                all_items, window_start, window_end
+            )
 
             # Enrichissement 2e passe (issue #25) : hooké ICI, après sélection,
             # avant la construction du Briefing. Kill switch via BRIEFING_ENRICH=0.
-            sections, dont_miss, enrich_warnings = _enrich_live(
-                client, sections, dont_miss,
+            sections, top_signals, enrich_warnings = _enrich_live(
+                client, sections, top_signals,
             )
+            dont_miss = top_signals[0] if top_signals else None
 
     warnings: list[str] = list(source_warnings) + list(enrich_warnings)
     for sec in sections_cfg:
@@ -236,6 +250,7 @@ def build(
         window_end=window_end,
         sections=sections,
         dont_miss=dont_miss,
+        top_signals=top_signals,
         config_hash=cfg_hash,
         prompts_version=PROMPTS_VERSION,
         git_commit=_git_commit(),

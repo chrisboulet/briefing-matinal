@@ -1,18 +1,21 @@
-"""Sélection finale par section + dont_miss + diversité auteurs. Voir PRD §S1.bis + #43."""
+"""Sélection finale : top signaux + sections + diversité auteurs (#43, top-10)."""
 
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from typing import Any
 
 from scripts.item_quality import is_hero_url_eligible
 from scripts.models import Item
 
-# Compte les items "longs" (vidéo, thread, article long) — bonus pour dont_miss
+# Compte les items "longs" (vidéo, thread, article long) — bonus soft ranking
 LONGFORM_HINTS = ("youtube.com", "youtu.be", "/thread/", "watch?v=")
 
 # Défaut issue #43 : un auteur ne monopolise pas le briefing.
 DEFAULT_MAX_ITEMS_PER_AUTHOR = 1
+# Cible produit : top sujets chauds en tête de brief.
+DEFAULT_TOP_SIGNALS_MAX = 10
 
 
 def normalize_handle(handle: str) -> str:
@@ -20,29 +23,73 @@ def normalize_handle(handle: str) -> str:
     h = (handle or "").strip()
     if not h:
         return "unknown"
-    # Domaines web (lapresse.ca) vs @handles — garder tel quel en lower
     if h.startswith("@"):
         return "@" + h[1:].lower()
     return h.lower()
+
+
+def _is_longform(it: Item) -> bool:
+    return any(h in it.canonical_url for h in LONGFORM_HINTS)
+
+
+def _rank_key(it: Item) -> tuple:
+    # longform d'abord (0), puis score DESC, recence, id stable
+    return (0 if _is_longform(it) else 1, -it.score, -it.published_at.timestamp(), it.id)
+
+
+def select_top_signals(
+    items: list[Item],
+    max_n: int = DEFAULT_TOP_SIGNALS_MAX,
+    max_items_per_author: int = DEFAULT_MAX_ITEMS_PER_AUTHOR,
+) -> list[Item]:
+    """
+    Top N sujets chauds (global), avant les sections thématiques.
+
+    - URL hero-eligible seulement (pas de homepage Frankenstein)
+    - Cap par auteur (défaut 1)
+    - Ranking : longform soft + score composite + recency
+    """
+    max_n = max(0, int(max_n))
+    if max_n == 0 or not items:
+        return []
+
+    max_per_author = max(0, int(max_items_per_author))
+    author_counts: Counter[str] = Counter()
+    ranked = sorted(items, key=_rank_key)
+    out: list[Item] = []
+    for it in ranked:
+        if len(out) >= max_n:
+            break
+        if not is_hero_url_eligible(it.canonical_url):
+            continue
+        handle = normalize_handle(it.source_handle)
+        if max_per_author > 0 and author_counts[handle] >= max_per_author:
+            continue
+        out.append(it)
+        author_counts[handle] += 1
+    return out
 
 
 def select_by_section(
     items: list[Item],
     sections_config: list[dict[str, Any]],
     max_items_per_author: int = DEFAULT_MAX_ITEMS_PER_AUTHOR,
+    prior_handles: Iterable[str] | None = None,
 ) -> dict[str, list[Item]]:
     """
     Pour chaque section, garde top max_items selon (score, published_at),
     en respectant un plafond global par `source_handle` (issue #43).
 
+    `prior_handles` : auteurs déjà pris par le top_signals (cap global).
     Items déjà triés en sortie de dedupe (score DESC).
-    Le compteur d'auteurs est partagé entre sections (ordre = config).
     """
     by_section: dict[str, list[Item]] = defaultdict(list)
     for it in items:
         by_section[it.section_id].append(it)
 
-    author_counts: Counter[str] = Counter()
+    author_counts: Counter[str] = Counter(
+        normalize_handle(h) for h in (prior_handles or [])
+    )
     max_per_author = max(0, int(max_items_per_author))
 
     out: dict[str, list[Item]] = {}
@@ -68,17 +115,9 @@ def select_dont_miss(
     max_items_per_author: int = DEFAULT_MAX_ITEMS_PER_AUTHOR,
 ) -> Item | None:
     """
-    1 item 'À NE PAS MANQUER'.
+    Legacy 1-item hero (conservé pour tests / fallback).
 
-    Règles (issue #40 + anti-redondance historique + #43) :
-    1. Préférer un leftover (non déjà rendu en section) pour éviter le doublon.
-    2. URL homepage / vide → inéligible hero.
-    3. Respecter le cap auteur global (ne pas mettre un 2e post du même handle
-       en hero si déjà présent en section), sauf max_items_per_author <= 0.
-    4. Parmi les leftovers éligibles : bonus soft longform, puis score DESC.
-    5. Si des leftovers existent mais sont tous inéligibles (ex. homepage) :
-       fallback sur le meilleur item déjà sélectionné éligible.
-    6. Si aucun leftover du tout (tout est déjà en section) → None (anti-redondance).
+    Préférer `select_top_signals` dans le pipeline principal.
     """
     selected_ids = {it.id for items in selected.values() for it in items}
     leftovers = [it for it in all_items if it.id not in selected_ids]
@@ -89,12 +128,6 @@ def select_dont_miss(
         for it in items
     }
     max_per_author = max(0, int(max_items_per_author))
-
-    def is_longform(it: Item) -> bool:
-        return any(h in it.canonical_url for h in LONGFORM_HINTS)
-
-    def rank_key(it: Item) -> tuple:
-        return (0 if is_longform(it) else 1, -it.score, -it.published_at.timestamp(), it.id)
 
     def author_ok(it: Item) -> bool:
         if max_per_author <= 0:
@@ -109,7 +142,7 @@ def select_dont_miss(
         ]
         if not eligible:
             return None
-        eligible.sort(key=rank_key)
+        eligible.sort(key=_rank_key)
         return eligible[0]
 
     if not leftovers:
@@ -119,9 +152,6 @@ def select_dont_miss(
     if chosen is not None:
         return chosen
 
-    # Distinguer deux cas (issue #40 vs #43) :
-    # - leftovers URL-ok mais bloqués par cap auteur → pas de hero (anti-doublon)
-    # - leftovers uniquement homepage/URL inéligibles → fallback section éligible
     url_ok_leftovers = [
         it for it in leftovers if is_hero_url_eligible(it.canonical_url)
     ]
@@ -134,7 +164,7 @@ def select_dont_miss(
     ]
     if not eligible_selected:
         return None
-    eligible_selected.sort(key=rank_key)
+    eligible_selected.sort(key=_rank_key)
     return eligible_selected[0]
 
 

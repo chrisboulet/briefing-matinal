@@ -39,15 +39,29 @@ class Briefing:
     window_start: datetime
     window_end: datetime
     sections: dict[str, list[Item]]
-    dont_miss: Item | None
-    config_hash: str
-    prompts_version: str
-    git_commit: str
+    # Legacy single-hero (tests + fallback). Prefer top_signals for product.
+    dont_miss: Item | None = None
+    # Top N sujets chauds (signal-density) — rendus en tête du HTML.
+    top_signals: list[Item] = field(default_factory=list)
+    config_hash: str = ""
+    prompts_version: str = ""
+    git_commit: str = ""
     warnings: list[str] = field(default_factory=list)
 
     @property
     def items_count(self) -> int:
         n = sum(len(v) for v in self.sections.values())
-        if self.dont_miss is not None:
+        if self.top_signals:
+            n += len(self.top_signals)
+        elif self.dont_miss is not None:
             n += 1
         return n
+
+    @property
+    def heroes(self) -> list[Item]:
+        """Liste des items hero à rendre (top_signals prioritaire)."""
+        if self.top_signals:
+            return list(self.top_signals)
+        if self.dont_miss is not None:
+            return [self.dont_miss]
+        return []

@@ -94,7 +94,8 @@ class EnrichmentResult:
     """Résultat agrégé de l'enrichissement 2e passe sur une sélection."""
 
     sections: dict[str, list[Item]]
-    dont_miss: Item | None
+    dont_miss: Item | None = None
+    top_signals: list[Item] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     usage: XAIUsage = field(
         default_factory=lambda: XAIUsage(input_tokens=0, output_tokens=0, tool_calls=0)
@@ -111,8 +112,9 @@ class EnrichmentResult:
 def enrich_selected(
     client: XAIClient,
     sections: dict[str, list[Item]],
-    dont_miss: Item | None,
+    dont_miss: Item | None = None,
     *,
+    top_signals: list[Item] | None = None,
     prompts_dir: Path = Path("prompts"),
     max_workers: int = DEFAULT_MAX_WORKERS,
     timeout_s: float = DEFAULT_PER_ITEM_TIMEOUT_S,
@@ -120,51 +122,30 @@ def enrich_selected(
     """
     Enrichit les items sélectionnés via un appel `web_search` par item.
 
-    Pour chaque item non skippé :
-      1. Restreint `allowed_domains` au hostname de `canonical_url` ;
-      2. Rend `prompts/enrich.txt` avec url/title/section_id ;
-      3. Appelle `client.call(..., response_schema=<single-item>)` ;
-      4. Remplace `summary` + `raw_excerpt` via `dataclasses.replace`.
-
-    Skip :
-      - hôtes `x.com` / `twitter.com` (silencieux, redondant avec 1re passe) ;
-      - URL vide ou sans hostname valide (avec warning).
-
-    Dégradation :
-      - XAIError per-item → warning, item d'origine conservé ;
-      - timeout per-item (future.result timeout) → warning + original ;
-      - deadline globale 30s dépassée → cancel, warning + original pour les
-        restants ;
-      - summary vide/whitespace → warning + original.
-
-    Args:
-        client: instance `XAIClient` partagée (1 httpx.Client pour toutes
-            les requêtes, thread-safe en lecture pour `post`).
-        sections: dict section_id → list[Item] issu de `select_by_section`.
-        dont_miss: Item (ou None) issu de `select_dont_miss`.
-        prompts_dir: dossier contenant `enrich.txt`.
-        max_workers: taille du pool (défaut 4).
-        timeout_s: timeout par futur (défaut 20s).
-
-    Returns:
-        `EnrichmentResult` avec `sections` et `dont_miss` enrichis (ou
-        d'origine sur skip/échec), `warnings`, `usage` agrégée, et
-        compteurs `enriched_count` / `skipped_count`.
+    `top_signals` (liste) a priorité sur `dont_miss` (legacy 1 item).
     """
     deadline = time.monotonic() + GLOBAL_DEADLINE_S
 
     env = _make_jinja_env(prompts_dir)
     user_prompt_tmpl = env.get_template("enrich.txt")
 
+    signals: list[Item]
+    if top_signals is not None:
+        signals = list(top_signals)
+    elif dont_miss is not None:
+        signals = [dont_miss]
+    else:
+        signals = []
+
     # Collecte la liste plate d'items à traiter, en gardant un mapping
-    # vers leur emplacement (section_id, idx) ou ("__dont_miss__", 0).
+    # vers leur emplacement (section_id, idx) ou ("__top__", idx).
     Job = tuple[Item, str, int]  # (item, location_key, idx)
     jobs: list[Job] = []
     for section_id, items in sections.items():
         for idx, item in enumerate(items):
             jobs.append((item, section_id, idx))
-    if dont_miss is not None:
-        jobs.append((dont_miss, "__dont_miss__", 0))
+    for idx, item in enumerate(signals):
+        jobs.append((item, "__top__", idx))
 
     # Partitionne en "à enrichir" vs "skip silencieux" (X/Twitter).
     warnings: list[str] = []
@@ -200,7 +181,8 @@ def enrich_selected(
         )
         return EnrichmentResult(
             sections=sections,
-            dont_miss=dont_miss,
+            dont_miss=signals[0] if signals else None,
+            top_signals=signals,
             warnings=warnings,
             usage=total_usage,
             enriched_count=0,
@@ -286,10 +268,10 @@ def enrich_selected(
     new_sections: dict[str, list[Item]] = {
         sid: list(items) for sid, items in sections.items()
     }
-    new_dont_miss = dont_miss
+    new_signals = list(signals)
     for (loc_key, idx), enriched_item in enriched_by_location.items():
-        if loc_key == "__dont_miss__":
-            new_dont_miss = enriched_item
+        if loc_key == "__top__":
+            new_signals[idx] = enriched_item
         else:
             new_sections[loc_key][idx] = enriched_item
 
@@ -304,7 +286,8 @@ def enrich_selected(
 
     return EnrichmentResult(
         sections=new_sections,
-        dont_miss=new_dont_miss,
+        dont_miss=new_signals[0] if new_signals else None,
+        top_signals=new_signals,
         warnings=warnings,
         usage=total_usage,
         enriched_count=enriched_count,
