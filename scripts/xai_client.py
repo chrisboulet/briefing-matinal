@@ -28,7 +28,9 @@ from typing import Any, Literal
 import httpx
 
 XAI_BASE_URL = "https://api.x.ai/v1"
-DEFAULT_MODEL = "grok-4-1-fast-reasoning"
+# Défaut aligné prod Hermes + modèles listés GET /v1/models (2026-07-17).
+# Anciens fast-1 IDs (grok-4-1-fast-*) absents de l'API.
+DEFAULT_MODEL = "grok-4.5"
 DEFAULT_TIMEOUT_S = 30.0
 DEFAULT_MAX_RETRIES = 2  # = 3 essais total
 
@@ -368,6 +370,12 @@ class XAIClient:
 
         schema = response_schema if response_schema is not None else ITEMS_SCHEMA
 
+        # Responses API (/v1/responses) n'accepte pas `response_format` (400:
+        # use text.format / chat completions only). On conserve schema /
+        # schema_name pour la validation côté `_parse_response` et callers,
+        # mais on force le JSON via prompts + parsing défensif.
+        _ = schema
+        _ = schema_name
         return {
             "model": self.model,
             "input": [
@@ -375,14 +383,6 @@ class XAIClient:
                 {"role": "user", "content": user_prompt},
             ],
             "tools": [{"type": tool, **params}],
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": schema_name,
-                    "strict": True,
-                    "schema": schema,
-                },
-            },
         }
 
     def _parse_response(
