@@ -34,6 +34,11 @@ If an item touches multiple, pick the most specific.
 - 0.5-0.7: borderline, include only if section quota not yet met
 - < 0.5: skip
 
+# Official / first-party priority
+When an account posts a **launch, product ship, safety statement, or official clarification**:
+- Prefer that post over quote-tweet commentary about the same event from other accounts in this batch.
+- For contested high-velocity topics, summaries may include a short Side A / Side B room split **only if** other posts in the tool results actually support it (see system prompt). Never invent opposition.
+
 # Quantity
 Return up to {{ max_items_total }} items total across all sections. Quality > quantity. Return fewer if appropriate.
 
