@@ -36,6 +36,7 @@ from urllib.parse import urlparse
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from scripts.item_quality import is_acceptable_enrichment_summary, is_homepage_url
 from scripts.models import Item
 from scripts.scrapling_fetcher import fetch_article_text
 from scripts.xai_client import XAIClient, XAIError, XAIUsage
@@ -445,26 +446,39 @@ def _enrich_one(
         _log_enrich_skip(prompt_label, item.id, reason=f"xai_error_trying_scrapling:{type(exc).__name__}")
 
     # --- Tentative 2 : fallback Scrapling (fetch HTML direct) ---
+    # Issue #40 : ne jamais scrap-er une homepage ni remplacer le summary
+    # d'origine par un body hors-sujet (ex. title Starship + body Iran).
+    if is_homepage_url(item.canonical_url):
+        _log_enrich_skip(prompt_label, item.id, reason="scrapling_skipped_homepage_url")
+        return None, xai_usage
+
     scrapling_text = fetch_article_text(item.canonical_url)
     if scrapling_text:
-        _log_enrich_ok(
+        if is_acceptable_enrichment_summary(item.title, scrapling_text):
+            _log_enrich_ok(
+                prompt_label,
+                item_id=item.id,
+                host=host,
+                summary_len=len(scrapling_text),
+                tokens_in=0,
+                tokens_out=0,
+                tool_calls=0,
+                cost_usd=0.0,
+                duration_ms=0,
+                via="scrapling_fallback",
+            )
+            enriched = dataclasses.replace(
+                item,
+                summary=scrapling_text,
+                raw_excerpt=scrapling_text[:_RAW_EXCERPT_CAP],
+            )
+            return enriched, xai_usage  # usage = xai attempt (peut être zero)
+        _log_enrich_skip(
             prompt_label,
-            item_id=item.id,
-            host=host,
-            summary_len=len(scrapling_text),
-            tokens_in=0,
-            tokens_out=0,
-            tool_calls=0,
-            cost_usd=0.0,
-            duration_ms=0,
-            via="scrapling_fallback",
+            item.id,
+            reason="scrapling_rejected_quality_or_title_mismatch",
         )
-        enriched = dataclasses.replace(
-            item,
-            summary=scrapling_text,
-            raw_excerpt=scrapling_text[:_RAW_EXCERPT_CAP],
-        )
-        return enriched, xai_usage  # usage = xai attempt (peut être zero)
+        return None, xai_usage
 
     _log_enrich_skip(prompt_label, item.id, reason="both_xai_and_scrapling_failed")
     return None, xai_usage
