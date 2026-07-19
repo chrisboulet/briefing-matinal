@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "rss_feeds": [
+    {
+      "url": "https://www.lapresse.ca/actualites/rss",
+      "section_id": "politique",
+      "handle": "lapresse.ca"
+    },
+    {
+      "url": "https://www.lapresse.ca/affaires/rss",
+      "section_id": "business",
+      "handle": "lapresse.ca"
+    },
+    {
+      "url": "https://ici.radio-canada.ca/rss/4159",
+      "section_id": "politique",
+      "handle": "radio-canada.ca"
+    },
+    {
+      "url": "https://www.ledevoir.com/rss/edition_complete.xml",
+      "section_id": "politique",
+      "handle": "ledevoir.com"
+    },
+    {
+      "url": "https://www.cbc.ca/webfeed/rss/rss-business",
+      "section_id": "business",
+      "handle": "cbc.ca"
+    },
+    {
+      "url": "https://feeds.bbci.co.uk/news/business/rss.xml",
+      "section_id": "business",
+      "handle": "bbc.com"
+    },
+    {
+      "url": "https://feeds.arstechnica.com/arstechnica/index",
+      "section_id": "ai-tech",
+      "handle": "arstechnica.com"
+    },
+    {
+      "url": "https://www.theverge.com/rss/index.xml",
+      "section_id": "ai-tech",
+      "handle": "theverge.com"
+    },
+    {
+      "url": "https://techcrunch.com/feed/",
+      "section_id": "ai-tech",
+      "handle": "techcrunch.com"
+    },
+    {
+      "url": "https://www.space.com/feeds/all",
+      "section_id": "spacex",
+      "handle": "space.com"
+    },
+    {
+      "url": "https://electrek.co/feed/",
+      "section_id": "tesla",
+      "handle": "electrek.co"
+    },
+    {
+      "url": "https://www.teslarati.com/feed/",
+      "section_id": "tesla",
+      "handle": "teslarati.com"
+    },
+    {
+      "url": "https://www.statnews.com/feed/",
+      "section_id": "sante",
+      "handle": "statnews.com"
+    }
+  ],
+  "google_news": [
+    {
+      "query": "intelligence artificielle OR LLM OR OpenAI OR Anthropic OR Gemini",
+      "section_id": "ai-tech",
+      "hl": "fr-CA",
+      "gl": "CA"
+    },
+    {
+      "query": "Tesla OR robotaxi OR FSD OR Optimus",
+      "section_id": "tesla",
+      "hl": "en-US",
+      "gl": "US"
+    },
+    {
+      "query": "SpaceX OR Starship OR Starlink",
+      "section_id": "spacex",
+      "hl": "en-US",
+      "gl": "US"
+    },
+    {
+      "query": "Québec OR Carney OR Legault politique",
+      "section_id": "politique",
+      "hl": "fr-CA",
+      "gl": "CA"
+    },
+    {
+      "query": "économie Canada bourse marchés",
+      "section_id": "business",
+      "hl": "fr-CA",
+      "gl": "CA"
+    },
+    {
+      "query": "longévité OR GLP-1 OR fasting OR longevity",
+      "section_id": "sante",
+      "hl": "en-US",
+      "gl": "US"
+    },
+    {
+      "query": "AI regulation OR AI Act OR cybersécurité",
+      "section_id": "gouvernance",
+      "hl": "en-CA",
+      "gl": "CA"
+    }
+  ],
+  "tavily_queries": [
+    {
+      "query": "latest AI LLM model releases enterprise adoption",
+      "section_id": "ai-tech",
+      "max_results": 5
+    },
+    {
+      "query": "Tesla FSD robotaxi news last 24 hours",
+      "section_id": "tesla",
+      "max_results": 4
+    },
+    {
+      "query": "SpaceX Starship launch news",
+      "section_id": "spacex",
+      "max_results": 4
+    },
+    {
+      "query": "Canada Quebec politics business news today",
+      "section_id": "politique",
+      "max_results": 5
+    },
+    {
+      "query": "Canadian markets economy business M&A",
+      "section_id": "business",
+      "max_results": 4
+    },
+    {
+      "query": "longevity GLP-1 health research news",
+      "section_id": "sante",
+      "max_results": 3
+    },
+    {
+      "query": "AI governance regulation cybersecurity breach",
+      "section_id": "cybersec",
+      "max_results": 3
+    }
+  ],
+  "reddit": [
+    {
+      "subreddit": "MachineLearning",
+      "section_id": "ai-tech",
+      "limit": 10
+    },
+    {
+      "subreddit": "LocalLLaMA",
+      "section_id": "ai-tech",
+      "limit": 8
+    },
+    {
+      "subreddit": "canada",
+      "section_id": "politique",
+      "limit": 8
+    },
+    {
+      "subreddit": "Quebec",
+      "section_id": "politique",
+      "limit": 8
+    },
+    {
+      "subreddit": "teslamotors",
+      "section_id": "tesla",
+      "limit": 8
+    },
+    {
+      "subreddit": "spacex",
+      "section_id": "spacex",
+      "limit": 8
+    },
+    {
+      "subreddit": "cybersecurity",
+      "section_id": "cybersec",
+      "limit": 6
+    }
+  ],
+  "hackernews": [
+    {
+      "query": "AI OR LLM OR GPT OR Claude OR Gemini",
+      "section_id": "ai-tech",
+      "hits": 10
+    },
+    {
+      "query": "Tesla OR SpaceX OR Starship",
+      "section_id": "spacex",
+      "hits": 8
+    },
+    {
+      "query": "security OR ransomware OR CVE",
+      "section_id": "cybersec",
+      "hits": 6
+    }
+  ],
+  "timeouts": {
+    "rss_s": 12,
+    "tavily_s": 25,
+    "reddit_s": 12,
+    "hn_s": 12
+  },
+  "max_items_per_source": 8
+}

@@ -214,6 +214,27 @@ def source_briefing(
     warnings: list[str] = []
     total_usage = XAIUsage(input_tokens=0, output_tokens=0, tool_calls=0)
 
+    # -- Phase 0 : sources externes (RSS / Google News / Tavily / Reddit / HN)
+    # Plancher de densité indépendant de xAI. Échecs soft = warnings seulement.
+    # BRIEFING_EXTERNAL=0 désactive (tests / offline).
+    if os.environ.get("BRIEFING_EXTERNAL", "1") != "0":
+        try:
+            from scripts.external_sourcing import source_external
+
+            ext = source_external(
+                window_start=window_start,
+                window_end=window_end,
+                valid_section_ids=valid_section_ids,
+            )
+            items.extend(ext.items)
+            warnings.extend(ext.warnings)
+            logger.info("external phase0: %d items", len(ext.items))
+        except Exception as exc:  # never kill the briefing
+            warnings.append(f"external_phase0_fatal: {type(exc).__name__}: {exc}")
+            logger.exception("external phase0 failed")
+    else:
+        warnings.append("external_phase0: skipped (BRIEFING_EXTERNAL=0)")
+
     # -- Construire les specs par phase (accounts → themes → web) -------------
     # Les comptes sont prioritaires pour la densité du brief; le circuit
     # breaker ne s'applique PAS à la phase accounts (ne jamais annuler le
@@ -336,7 +357,7 @@ def source_briefing(
             MAX_CONCURRENT_CALLS,
             allow_circuit,
         )
-        phase_items, phase_warnings, phase_usage, tripped = _run_call_phase(
+        phase_items, phase_warnings, phase_usage, _tripped = _run_call_phase(
             specs, allow_circuit=allow_circuit, phase_name=phase_name
         )
         items.extend(phase_items)

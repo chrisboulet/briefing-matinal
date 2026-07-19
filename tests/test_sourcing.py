@@ -150,7 +150,7 @@ def test_source_briefing_returns_sourcing_result(
         prompts_dir=PROMPTS_DIR,
     )
 
-    assert result.warnings == []
+    assert [w for w in result.warnings if "external_phase0" not in w] == []
     assert len(result.items) > 0
     assert all(isinstance(it, Item) for it in result.items)
     assert isinstance(result.total_usage, XAIUsage)

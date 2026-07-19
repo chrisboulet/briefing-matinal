@@ -7,6 +7,12 @@ from datetime import UTC, datetime
 import pytest
 
 from scripts.dedup import canonical_url, item_id
+
+
+@pytest.fixture(autouse=True)
+def _disable_external_phase0(monkeypatch):
+    """Phase 0 hits the network; keep unit/e2e tests offline by default."""
+    monkeypatch.setenv("BRIEFING_EXTERNAL", "0")
 from scripts.models import Item
 
 
