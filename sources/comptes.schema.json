@@ -106,9 +106,23 @@
     "top_signals_max": {
       "type": "integer",
       "minimum": 0,
-      "maximum": 20,
-      "default": 10,
+      "maximum": 25,
+      "default": 15,
       "description": "Nombre max d'items dans À NE PAS MANQUER (top sujets chauds)."
+    },
+    "items_min": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 50,
+      "default": 10,
+      "description": "Nombre minimum d'items rendus dans le briefing (backfill si besoin)."
+    },
+    "items_max": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50,
+      "default": 25,
+      "description": "Nombre maximum d'items rendus dans le briefing (top + sections)."
     }
   }
 }

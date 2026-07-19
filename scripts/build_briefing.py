@@ -18,11 +18,13 @@ from scripts.models import Briefing, Item
 from scripts.render import RenderError, render
 from scripts.scoring import rescore_items
 from scripts.select import (
+    DEFAULT_ITEMS_MAX,
+    DEFAULT_ITEMS_MIN,
     DEFAULT_MAX_ITEMS_PER_AUTHOR,
     DEFAULT_TOP_SIGNALS_MAX,
     apply_engagement_filter,
-    select_by_section,
-    select_top_signals,
+    assemble_selection,
+    soften_engagement_min,
 )
 from scripts.window import briefing_id as compute_briefing_id
 from scripts.window import compute_window
@@ -171,33 +173,44 @@ def build(
         config.get("max_items_per_author", DEFAULT_MAX_ITEMS_PER_AUTHOR)
     )
     top_n = int(config.get("top_signals_max", DEFAULT_TOP_SIGNALS_MAX))
+    items_min = int(config.get("items_min", DEFAULT_ITEMS_MIN))
+    items_max = int(config.get("items_max", DEFAULT_ITEMS_MAX))
 
     fixture_meta: dict | None = None
     source_warnings: list[str]
     enrich_warnings: list[str] = []
+    budget_warnings: list[str] = []
 
     def _pipeline(all_items: list[Item], window_start: datetime, window_end: datetime):
-        """Filter → rescore → dedupe → top N → sections (+ author cap)."""
-        filtered = apply_engagement_filter(all_items, config["engagement_min"])
-        filtered = [
-            it for it in filtered if window_start <= it.published_at <= window_end
+        """Filter → rescore → dedupe → assemble budget [min,max]."""
+        nonlocal budget_warnings
+        windowed = [
+            it for it in all_items if window_start <= it.published_at <= window_end
         ]
+        engagement = dict(config["engagement_min"])
+        filtered = apply_engagement_filter(windowed, engagement)
+        # Si trop peu de matière pour le min, assouplir l'engagement une fois.
+        if len(filtered) < items_min:
+            soft = soften_engagement_min(engagement)
+            softer = apply_engagement_filter(windowed, soft)
+            if len(softer) > len(filtered):
+                budget_warnings.append(
+                    "engagement_softened: "
+                    f"likes>={soft['likes']} OR reposts>={soft['reposts']} "
+                    f"(avait {len(filtered)}, maintenant {len(softer)})"
+                )
+                filtered = softer
         rescored = rescore_items(filtered, window_start, window_end)
         deduped = dedupe(rescored)
-        # Top sujets chauds d'abord (cible ~10), puis sections sans doublon auteur.
-        top_signals = select_top_signals(
+        top_signals, sections, sel_warnings = assemble_selection(
             deduped,
-            max_n=top_n,
-            max_items_per_author=max_per_author,
-        )
-        top_ids = {it.id for it in top_signals}
-        remaining = [it for it in deduped if it.id not in top_ids]
-        sections = select_by_section(
-            remaining,
             sections_cfg,
+            top_signals_max=top_n,
+            items_min=items_min,
+            items_max=items_max,
             max_items_per_author=max_per_author,
-            prior_handles=[it.source_handle for it in top_signals],
         )
+        budget_warnings.extend(sel_warnings)
         dont_miss = top_signals[0] if top_signals else None
         return sections, dont_miss, top_signals
 
@@ -237,7 +250,9 @@ def build(
             )
             dont_miss = top_signals[0] if top_signals else None
 
-    warnings: list[str] = list(source_warnings) + list(enrich_warnings)
+    warnings: list[str] = (
+        list(source_warnings) + list(enrich_warnings) + list(budget_warnings)
+    )
     for sec in sections_cfg:
         if not sections.get(sec["id"]):
             warnings.append(f"section '{sec['id']}' vide")

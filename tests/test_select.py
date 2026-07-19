@@ -264,3 +264,82 @@ def test_engagement_filter_or_logic(make_item):
     reposts_only = make_item("r", "https://e.com/2", source_type="x_account", likes=0, reposts=15)
     out = apply_engagement_filter([likes_only, reposts_only], {"likes": 50, "reposts": 10})
     assert len(out) == 2
+
+
+def test_assemble_selection_respects_max_25(make_item):
+    from scripts.select import assemble_selection
+
+    items = [
+        make_item(
+            f"n{i}",
+            f"https://e.com/{i}",
+            section_id="ai-tech" if i % 2 == 0 else "business",
+            score=0.99 - i * 0.01,
+            source_handle=f"@u{i}",
+        )
+        for i in range(40)
+    ]
+    cfg = [
+        {"id": "ai-tech", "label": "AI", "emoji": "🤖", "max_items": 10},
+        {"id": "business", "label": "Biz", "emoji": "💼", "max_items": 10},
+    ]
+    top, sections, warnings = assemble_selection(
+        items, cfg, top_signals_max=15, items_min=10, items_max=25, max_items_per_author=1
+    )
+    total = len(top) + sum(len(v) for v in sections.values())
+    assert total <= 25
+    assert total >= 10
+
+
+def test_assemble_selection_backfills_to_min_10(make_item):
+    from scripts.select import assemble_selection
+
+    # Only 12 distinct authors, top_signals_max=5 would leave thin sections
+    items = [
+        make_item(
+            f"n{i}",
+            f"https://e.com/{i}",
+            section_id="ai-tech",
+            score=0.9 - i * 0.01,
+            source_handle=f"@u{i}",
+        )
+        for i in range(12)
+    ]
+    cfg = [{"id": "ai-tech", "label": "AI", "emoji": "🤖", "max_items": 2}]
+    top, sections, warnings = assemble_selection(
+        items, cfg, top_signals_max=5, items_min=10, items_max=25, max_items_per_author=1
+    )
+    total = len(top) + sum(len(v) for v in sections.values())
+    assert total >= 10
+    assert total <= 25
+    assert any("backfill" in w for w in warnings)
+
+
+def test_assemble_selection_caps_hard_at_max(make_item):
+    from scripts.select import assemble_selection
+
+    items = [
+        make_item(
+            f"n{i}",
+            f"https://e.com/{i}",
+            section_id="ai-tech",
+            score=1.0 - i * 0.001,
+            source_handle=f"@a{i}",
+        )
+        for i in range(30)
+    ]
+    cfg = [{"id": "ai-tech", "label": "AI", "emoji": "🤖", "max_items": 20}]
+    top, sections, warnings = assemble_selection(
+        items, cfg, top_signals_max=20, items_min=10, items_max=25, max_items_per_author=1
+    )
+    total = len(top) + sum(len(v) for v in sections.values())
+    assert total == 25
+    assert any("tronque" in w or "budget" in w for w in warnings)
+
+
+def test_soften_engagement_halves_thresholds():
+    from scripts.select import soften_engagement_min
+
+    soft = soften_engagement_min({"likes": 15, "reposts": 5})
+    assert soft["likes"] == 7
+    assert soft["reposts"] == 2

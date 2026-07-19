@@ -127,5 +127,7 @@
     "reposts": 5
   },
   "max_items_per_author": 1,
-  "top_signals_max": 10
+  "top_signals_max": 15,
+  "items_min": 10,
+  "items_max": 25
 }
